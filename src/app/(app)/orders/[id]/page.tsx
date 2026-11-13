@@ -8,7 +8,7 @@ import { signedPhotoUrl } from "@/lib/storage";
 import { ratingFor, runMaintenance } from "@/lib/orders";
 import { displayName } from "@/lib/format";
 import { DISPUTE_WINDOW_HOURS } from "@/lib/config";
-import type { Card, CardAuthorization, DartRequest, Dispute } from "@/lib/types";
+import type { Card, CardAuthorization, CardLoad, DartRequest, Dispute } from "@/lib/types";
 import { RequesterView } from "./requester-view";
 import { RunnerView } from "./runner-view";
 import { ProspectView } from "./prospect-view";
@@ -18,6 +18,14 @@ export const metadata = { title: "Order · Dart" };
 function canDispute(req: DartRequest) {
   if (["purchased", "delivering", "dropped_off"].includes(req.status)) return true;
   return req.status === "completed" && Boolean(req.completed_at) && Date.now() - new Date(req.completed_at!).getTime() < DISPUTE_WINDOW_HOURS * 3600_000;
+}
+
+/** Of the runner's orders at one store, the one their next tap is pointed at. */
+function armedRequestId(loads: CardLoad[]) {
+  const armed = loads
+    .filter((l) => l.armed_until && new Date(l.armed_until).getTime() > Date.now())
+    .sort((a, b) => b.armed_until!.localeCompare(a.armed_until!));
+  return armed[0]?.request_id ?? null;
 }
 
 export type Counterpart = { name: string; rating: number | null; ratingCount: number } | null;
@@ -96,16 +104,10 @@ async function Order({ params, searchParams }: Pick<PageProps<"/orders/[id]">, "
     );
   }
 
-  const [{ data: card }, { data: auths }] = await Promise.all([
-    // This order's own temporary card (newest, in case the order was re-claimed).
-    supabase
-      .from("cards")
-      .select("*")
-      .eq("request_id", id)
-      .eq("runner_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle<Card>(),
+  const [{ data: card }, { data: loads }, { data: auths }] = await Promise.all([
+    // The runner's one Dart card, and every order on it right now.
+    supabase.from("cards").select("*").eq("runner_id", userId).maybeSingle<Card>(),
+    supabase.from("card_loads").select("*").eq("runner_id", userId).eq("status", "loaded").returns<CardLoad[]>(),
     supabase
       .from("card_authorizations")
       .select("*")
@@ -119,7 +121,7 @@ async function Order({ params, searchParams }: Pick<PageProps<"/orders/[id]">, "
   return (
     <>
       <RealtimeRefresh channel={`order-${id}`} filter={`id=eq.${id}`} />
-      <RunnerView {...shared} card={card ?? null} auths={auths ?? []} />
+      <RunnerView {...shared} card={card ?? null} loads={loads ?? []} armedRequestId={armedRequestId(loads ?? [])} auths={auths ?? []} />
     </>
   );
 }

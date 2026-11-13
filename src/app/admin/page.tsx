@@ -65,8 +65,8 @@ async function Dashboard() {
     db.from("notifications").select("*").order("created_at", { ascending: false }).limit(40),
     db.from("ledger").select("kind, amount_cents, created_at"),
     db.from("delivery_timeouts").select("stage, runner_id"),
-    // Every claim issues exactly one Dart card, so cards = total claims (including re-claims).
-    db.from("cards").select("id", { count: "exact", head: true }),
+    // Every claim loads the runner's Dart card once, so loads = total claims (including re-claims).
+    db.from("card_loads").select("id", { count: "exact", head: true }),
   ]);
   const unboughtTimeouts = (timeouts ?? []).filter((t) => t.stage === "before_purchase").length;
   const lateTimeouts = (timeouts ?? []).filter((t) => t.stage === "after_purchase").length;

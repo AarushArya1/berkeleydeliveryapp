@@ -99,6 +99,8 @@ export const MAX_DURATION_HOURS = 144; // card holds expire after ~7 days
 // Bought but late: both sides are notified and the team sees it on /admin.
 export const DELIVERY_WINDOW_MINUTES = 45;
 export const DELIVERY_WARNING_MINUTES = 10; // "10 minutes left" push
+// Two orders at the same store: "I'm paying for this one" points the next tap at it for this long.
+export const ARM_MINUTES = 10;
 
 // ETAs must fit inside the delivery window.
 export const ETA_OPTIONS = [

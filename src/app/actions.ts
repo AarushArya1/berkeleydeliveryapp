@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { DORMS } from "@/lib/config";
 import { normalizePhone } from "@/lib/format";
 import * as orders from "@/lib/orders";
+import { payments } from "@/lib/payments";
 import type { ActionResult } from "@/lib/types";
 
 // Every action re-reads the session itself; nothing trusts the client.
@@ -78,6 +79,21 @@ export async function completePayoutSetup(): Promise<ActionResult> {
   return done({ ok: true });
 }
 
+/**
+ * PAYMENTS PLACEHOLDER for creating the runner's Stripe Issuing cardholder +
+ * virtual card. One card per runner, made at the end of runner setup.
+ */
+export async function createDartCard(): Promise<ActionResult> {
+  const userId = await requireUser();
+  const db = admin();
+  const { data: profile } = await db.from("profiles").select("runner_terms_accepted_at, payouts_ready_at, status").eq("id", userId).single();
+  if (!profile?.runner_terms_accepted_at || !profile.payouts_ready_at) return { ok: false, error: "Finish the steps above first" };
+  if (profile.status !== "active") return { ok: false, error: "Your account isn't active" };
+  const card = await payments.issueRunnerCard(userId);
+  await db.from("profiles").update({ card_issued_at: card.created_at }).eq("id", userId).is("card_issued_at", null);
+  return done({ ok: true });
+}
+
 export async function signOut() {
   const supabase = await createClient();
   await supabase.auth.signOut();
@@ -107,9 +123,16 @@ export async function releaseClaim(requestId: string) {
   redirect("/run");
 }
 
-export async function cardTap(requestId: string, amountCents: number, merchantStoreId: string) {
+/** PAYMENTS PLACEHOLDER: a simulated tap only knows the store and amount, like a real one. */
+export async function cardTap(amountCents: number, merchantStoreId: string) {
   const userId = await requireUser();
-  return done(await orders.simulateCardTap(userId, requestId, amountCents, merchantStoreId));
+  return done(await orders.simulateCardTap(userId, amountCents, merchantStoreId));
+}
+
+/** "I'm paying for this one": points the next tap at this order (two orders at one store). */
+export async function armForPayment(requestId: string) {
+  const userId = await requireUser();
+  return done(await orders.armLoad(userId, requestId));
 }
 
 export async function markPurchased(formData: FormData) {
@@ -167,9 +190,9 @@ export async function setUserStatus(targetId: string, status: "active" | "suspen
   return done(await orders.setUserStatus(userId, targetId, status));
 }
 
-export async function freezeRunnerCards(runnerId: string) {
+export async function freezeRunnerCard(runnerId: string) {
   const userId = await requireUser();
-  return done(await orders.freezeRunnerCards(userId, runnerId));
+  return done(await orders.freezeRunnerCard(userId, runnerId));
 }
 
 export async function runMaintenanceNow(): Promise<ActionResult> {

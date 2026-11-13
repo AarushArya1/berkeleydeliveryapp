@@ -1,19 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import clsx from "clsx";
-import { Camera, CheckCircle2, CircleX, Clock, KeyRound, PartyPopper, Wifi } from "lucide-react";
-import { cardTap, enterCode, markPurchased, releaseClaim, submitDropoff } from "@/app/actions";
+import { Camera, CheckCircle2, CircleX, Clock, KeyRound, PartyPopper } from "lucide-react";
+import { armForPayment, cardTap, enterCode, markPurchased, releaseClaim, submitDropoff } from "@/app/actions";
 import { DeliveryCountdown } from "@/components/delivery-countdown";
 import { StatusPill } from "@/components/order-bits";
 import { PhotoCapture } from "@/components/photo-capture";
 import { RateForm, StarsShown } from "@/components/stars";
 import { Timeline } from "@/components/timeline";
 import { ClockTime } from "@/components/time-left";
+import { DartCardVisual } from "@/components/dart-card";
 import { Button, Card, ErrorText, Input, Label, Notice, Placeholder, Select } from "@/components/ui";
-import { CATEGORY_LABEL, MAX_CODE_ATTEMPTS, STORES, getStore } from "@/lib/config";
+import { MAX_CODE_ATTEMPTS, STORES, getStore } from "@/lib/config";
 import { dollarsToCents, firstName, money } from "@/lib/format";
-import type { Card as DartCard, CardAuthorization, DartRequest, Dispute } from "@/lib/types";
+import type { Card as DartCard, CardAuthorization, CardLoad, DartRequest, Dispute } from "@/lib/types";
 import { BackLink, ConfirmButton, ItemsCard, OrderHeader, PersonRow, PhotoCard, useAction } from "./bits";
 import type { Counterpart } from "./page";
 
@@ -26,6 +26,10 @@ type Props = {
   dispute: Dispute | null;
   myRating: number | null;
   card: DartCard | null;
+  /** Every order on the runner's card right now (this one and any others). */
+  loads: CardLoad[];
+  /** The order the next tap is pointed at, when two are at the same store. */
+  armedRequestId: string | null;
   auths: CardAuthorization[];
 };
 
@@ -72,7 +76,7 @@ export function RunnerView(p: Props) {
         <Notice tone={req.cancelled_stage === "after_purchase" ? "lime" : "warn"}>
           {req.cancelled_stage === "after_purchase"
             ? `${requester} cancelled after you bought the items. They paid in full and your ${money(req.runner_fee_cents)} fee is released. You don't need to deliver.`
-            : `${requester} cancelled before you bought anything. Its Dart card is closed. Nothing else to do.`}
+            : `${requester} cancelled before you bought anything. It's been taken off your Dart card. Nothing else to do.`}
         </Notice>
       ) : null}
       {req.status === "disputed" ? (
@@ -107,58 +111,55 @@ export function RunnerView(p: Props) {
 // Step 1: pay with the Dart card
 // ---------------------------------------------------------------------------
 
-function DartCardVisual({ card }: { card: DartCard }) {
-  const active = card.status === "active";
-  const label = { active: `Up to ${money(card.limit_cents)}`, spent: "Used", cancelled: "Closed", frozen: "Frozen" }[card.status];
-  return (
-    <div
-      className={clsx(
-        "relative aspect-[1.6] overflow-hidden rounded-3xl p-5 text-white shadow-float",
-        active ? "bg-gradient-to-br from-action via-[#7d52f5] to-[#4c22c9]" : "bg-gradient-to-br from-zinc-500 to-zinc-700",
-      )}
-    >
-      <div className="absolute -right-10 -top-12 size-44 rounded-full bg-lime-300/25" />
-      <div className="absolute -bottom-16 -left-8 size-40 rounded-full bg-lime-300/15" />
-      <div className="relative flex h-full flex-col justify-between">
-        <div className="flex items-start justify-between">
-          <span className="text-lg font-extrabold tracking-tight">dart</span>
-          <Wifi className="size-6 rotate-90 opacity-80" />
-        </div>
-        <div>
-          <p className="font-mono text-lg tracking-[0.2em]">•••• •••• •••• {card.last4}</p>
-          <div className="mt-2 flex items-end justify-between text-xs">
-            <span className="opacity-80">EXP {card.exp}</span>
-            <span className="rounded-full bg-white/20 px-2.5 py-1 font-bold">
-              {label}
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function BuyStep({ req, card, auths }: Props) {
+function BuyStep({ req, card, loads, armedRequestId, auths }: Props) {
   const store = getStore(req.store);
+  const storeName = store ? `${store.name} ${store.where}` : "this order's store";
   const [amount, setAmount] = useState("");
   const [merchant, setMerchant] = useState<string>(req.store);
   const { pending, error, run } = useAction();
-  const [last, setLast] = useState<{ approved: boolean; reason?: string } | null>(null);
+  const arm = useAction();
+  const [last, setLast] = useState<{ approved: boolean; reason?: string; requestId: string | null } | null>(null);
 
   if (!card) return null;
   const cents = dollarsToCents(amount);
+  const onCard = loads.some((l) => l.request_id === req.id);
+  const sameStore = loads.filter((l) => l.store === req.store).length;
+  const others = loads.length - (onCard ? 1 : 0);
 
   return (
     <Card className="space-y-4 p-4">
       <div>
-        <p className="text-lg font-extrabold">Pay with this order&apos;s Dart card</p>
+        <p className="text-lg font-extrabold">Pay with your Dart card</p>
         <p className="text-sm text-muted">
-          A temporary card made just for this order: up to {money(req.max_price_cents)} at{" "}
-          {CATEGORY_LABEL[store?.category ?? ""] ?? "this store"}. Add it to Apple Pay or Google Pay and tap at checkout. It closes once
-          you&apos;ve paid.
+          {onCard ? (
+            <>
+              This order is on your card: up to {money(req.max_price_cents)}, only at {storeName}, for one purchase. Tap it at checkout
+              (it&apos;s in Apple Pay or Google Pay).
+              {others > 0 ? ` Your ${others} other order${others === 1 ? " is" : "s are"} on the same card, each with its own limit.` : ""}
+            </>
+          ) : (
+            "This order isn't on your Dart card, so taps will decline. Release it and claim it again, or contact the Dart team."
+          )}
         </p>
       </div>
-      <DartCardVisual card={card} />
+      <DartCardVisual card={card} loads={loads} />
+
+      {onCard && sameStore > 1 ? (
+        armedRequestId === req.id ? (
+          <Notice tone="lime">Your next tap at {storeName} pays for this order.</Notice>
+        ) : (
+          <div className="space-y-2.5 rounded-2xl bg-warn-soft p-4 text-sm text-warn-ink">
+            <p>
+              <b>You have {sameStore} orders at {storeName}.</b> Your card can&apos;t tell them apart at checkout, so pick this one before you
+              pay for it.
+            </p>
+            <ErrorText>{arm.error}</ErrorText>
+            <Button full variant="secondary" loading={arm.pending} onClick={() => arm.run(() => armForPayment(req.id))}>
+              I&apos;m paying for this one
+            </Button>
+          </div>
+        )
+      ) : null}
 
       <div className="space-y-3 rounded-2xl border border-dashed border-action/30 bg-action-soft/40 p-4">
         <div className="flex items-center justify-between">
@@ -187,6 +188,14 @@ function BuyStep({ req, card, auths }: Props) {
             <CircleX className="size-4 shrink-0" /> Declined: {last.reason}
           </p>
         ) : null}
+        {last?.approved && last.requestId !== req.id ? (
+          <Notice tone="action">
+            Approved, but it paid for your other order at this store.{" "}
+            <a href={`/orders/${last.requestId}`} className="font-bold underline">
+              Open that order
+            </a>
+          </Notice>
+        ) : null}
         <ErrorText>{error}</ErrorText>
         <Button
           full
@@ -195,9 +204,9 @@ function BuyStep({ req, card, auths }: Props) {
           disabled={!Number.isFinite(cents) || cents <= 0}
           onClick={() =>
             run(
-              () => cardTap(req.id, cents, merchant),
+              () => cardTap(cents, merchant),
               (r) => {
-                const d = (r as { data?: { approved: boolean; reason?: string } }).data;
+                const d = (r as { data?: { approved: boolean; reason?: string; requestId: string | null } }).data;
                 if (d) setLast(d);
               },
             )
@@ -366,7 +375,7 @@ function ReleaseButton({ requestId }: { requestId: string }) {
         variant="secondary"
         pending={pending}
         onConfirm={() => run(() => releaseClaim(requestId))}
-        confirmText="The order goes back on the wishlist for someone else and this order's Dart card is closed."
+        confirmText="The order goes back on the wishlist for someone else and comes off your Dart card."
       >
         Can&apos;t make it? Release this order
       </ConfirmButton>

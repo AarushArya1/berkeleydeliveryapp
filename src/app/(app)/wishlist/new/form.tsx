@@ -86,7 +86,7 @@ export function NewRequestForm({ defaultZone, defaultSpot }: { defaultZone: stri
         </section>
 
         <section>
-          <Label>Preferred store</Label>
+          <Label>Store</Label>
           <div className="grid grid-cols-2 gap-2.5">
             {STORES.map((s) => (
               <button

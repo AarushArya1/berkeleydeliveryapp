@@ -1,9 +1,10 @@
 import "server-only";
 import { admin } from "./supabase/admin";
 import { payments } from "./payments";
-import { decideAuthorization, type AuthorizationDecision } from "./payments/authorize";
+import { decideAuthorization, type AuthorizationDecision, type OpenLoad } from "./payments/authorize";
 import { breakdown, reserveShareCents } from "./fees";
 import {
+  ARM_MINUTES,
   DELIVERY_WARNING_MINUTES,
   DELIVERY_WINDOW_MINUTES,
   DISPUTE_WINDOW_HOURS,
@@ -26,7 +27,7 @@ import { inBackground } from "./background";
 import { orderUrl, sendPush, sendSms } from "./notify";
 import { uploadPhoto, validatePhoto } from "./storage";
 import { isOnboarded, isRunnerReady } from "./auth";
-import type { ActionResult, Card, DartRequest, Profile, RequestStatus } from "./types";
+import type { ActionResult, Card, CardLoad, DartRequest, Profile, RequestStatus } from "./types";
 
 // The order state machine. Every function here is called from a server action
 // with an already-verified user id, re-checks permissions itself, and changes
@@ -171,6 +172,11 @@ export async function claimRequest(runnerId: string, requestId: string, etaMinut
   if (req.max_price_cents > (await runnerOrderLimit(runnerId))) return fail("This order is above your current limit");
 
   const db = admin();
+  // One Dart card per runner; each claimed order gets its own load on it.
+  const { data: card } = await db.from("cards").select("*").eq("runner_id", runnerId).maybeSingle<Card>();
+  if (!card) return fail("Create your Dart card in runner setup first");
+  if (card.status === "frozen") return fail("Your Dart card is frozen. Contact the Dart team.");
+
   const now = Date.now();
   const eta = new Date(now + etaMinutes * 60_000).toISOString();
   const deliverBy = new Date(now + DELIVERY_WINDOW_MINUTES * 60_000).toISOString();
@@ -192,10 +198,11 @@ export async function claimRequest(runnerId: string, requestId: string, etaMinut
     .maybeSingle<DartRequest>();
   if (error || !claimed) return fail("Someone else just claimed this one");
 
+  // Add this order to the runner's card: its max price, its store, one purchase.
+  await payments.loadCard(card, claimed);
+
   const code = String(Math.floor(Math.random() * 10000)).padStart(4, "0");
   await db.from("request_codes").upsert({ request_id: requestId, code, attempts: 0 });
-  // A brand-new temporary Dart card for this order only.
-  await payments.issueCard(runnerId, claimed);
 
   const who = displayName(runner!.full_name);
   inBackground(() =>
@@ -216,10 +223,6 @@ export async function releaseClaim(runnerId: string, requestId: string): Promise
   return unclaim(req, "released");
 }
 
-function isPastDeadline(req: DartRequest) {
-  return Boolean(req.deliver_by && new Date(req.deliver_by) <= new Date());
-}
-
 /** Put a claimed (not yet bought) order back on the wishlist, or close it if its window is over. */
 async function unclaim(req: DartRequest, why: "released" | "timed_out"): Promise<ActionResult> {
   const stillOpen = new Date(req.expires_at) > new Date();
@@ -235,7 +238,7 @@ async function unclaim(req: DartRequest, why: "released" | "timed_out"): Promise
   if (!updated.data) return fail("This order already changed");
 
   await admin().from("request_codes").delete().eq("request_id", req.id);
-  await payments.closeCard(req.id, "cancelled");
+  await payments.unloadCard(req.id, why);
   if (!stillOpen) await payments.releaseHold(req, why === "timed_out" ? "expired after runner timed out" : "expired after runner released");
 
   if (why === "timed_out") {
@@ -243,7 +246,7 @@ async function unclaim(req: DartRequest, why: "released" | "timed_out"): Promise
     notifyPush(
       req.runner_id,
       "Time's up — order released",
-      `You didn't buy "${shortItems(req.items)}" within ${DELIVERY_WINDOW_MINUTES} minutes, so it went back on the wishlist and its Dart card was closed.`,
+      `You didn't buy "${shortItems(req.items)}" within ${DELIVERY_WINDOW_MINUTES} minutes, so it went back on the wishlist and it was taken off your Dart card.`,
       req,
     );
   }
@@ -262,37 +265,26 @@ async function unclaim(req: DartRequest, why: "released" | "timed_out"): Promise
 
 /**
  * PAYMENTS PLACEHOLDER: stands in for the runner tapping their Dart card at
- * checkout. Runs the same approve/decline rule Stripe Issuing will call.
+ * checkout. Like a real tap, it only knows the store and the amount; the same
+ * approve/decline rule Stripe Issuing will call decides which order it pays for.
  */
 export async function simulateCardTap(
   runnerId: string,
-  requestId: string,
   amountCents: number,
   merchantStoreId: string,
 ): Promise<ActionResult<AuthorizationDecision>> {
   const db = admin();
-  // This order's card: the newest one issued to this runner for it.
-  const { data: card } = await db
-    .from("cards")
-    .select("*")
-    .eq("request_id", requestId)
-    .eq("runner_id", runnerId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle<Card>();
-  if (!card) return fail("No Dart card for this order");
-  const req = await getRequest(requestId);
+  const { data: card } = await db.from("cards").select("*").eq("runner_id", runnerId).maybeSingle<Card>();
+  if (!card) return fail("You don't have a Dart card yet");
+  const loads = await openLoads(card.id);
   const merchant = getStore(merchantStoreId);
   const merchantCategory = merchant?.category ?? "restaurants";
 
-  let decision = decideAuthorization({ card, request: req, amountCents, merchantCategory });
-  // The delivery window is enforced at the card too, even if maintenance hasn't run yet.
-  if (decision.approved && req && isPastDeadline(req)) {
-    decision = { approved: false, reason: `The ${DELIVERY_WINDOW_MINUTES}-minute delivery window is over` };
-  }
+  let decision = decideAuthorization({ card, loads, amountCents, merchantStoreId, merchantCategory });
 
   let purchased: DartRequest | null = null;
-  if (decision.approved && req) {
+  if (decision.approved) {
+    const req = loads.find((l) => l.load.id === (decision as { loadId: string }).loadId)!.request!;
     const b = breakdown(amountCents, req.runner_fee_cents, req.dart_fee_cents);
     purchased = await transition(req.id, "claimed", {
       status: "purchased",
@@ -303,13 +295,14 @@ export async function simulateCardTap(
       purchased_at: new Date().toISOString(),
       payout_status: "pending",
     });
-    if (!purchased) decision = { approved: false, reason: "Order is not active" };
+    if (!purchased) decision = { approved: false, reason: "Order is not active", loadId: decision.loadId, requestId: decision.requestId };
   }
 
   await db.from("card_authorizations").insert({
     card_id: card.id,
+    card_load_id: decision.loadId,
     runner_id: runnerId,
-    request_id: requestId,
+    request_id: decision.requestId,
     amount_cents: Number.isFinite(amountCents) ? amountCents : 0,
     merchant: merchant?.name ?? "Other merchant",
     merchant_category: merchantCategory,
@@ -321,7 +314,8 @@ export async function simulateCardTap(
     // Charge at purchase: exact amount + fees from the hold; the rest is released.
     await payments.capture(purchased, purchased.charged_cents!);
     await payments.reserveContribution(purchased, reserveShareCents(purchased.dart_fee_cents));
-    await payments.closeCard(purchased.id, "spent");
+    // One purchase per load: this order comes off the card right away.
+    await payments.unloadCard(purchased.id, "purchased");
     notifyPush(
       purchased.requester_id,
       "Your items were bought",
@@ -330,6 +324,43 @@ export async function simulateCardTap(
     );
   }
   return { ok: true, data: decision };
+}
+
+/** The card's open loads with their orders, newest first. */
+export async function openLoads(cardId: string): Promise<OpenLoad[]> {
+  const db = admin();
+  const { data: loads } = await db
+    .from("card_loads")
+    .select("*")
+    .eq("card_id", cardId)
+    .eq("status", "loaded")
+    .order("loaded_at", { ascending: false })
+    .returns<CardLoad[]>();
+  if (!loads?.length) return [];
+  const { data: reqs } = await db.from("requests").select("*").in("id", loads.map((l) => l.request_id)).returns<DartRequest[]>();
+  return loads.map((load) => ({ load, request: reqs?.find((r) => r.id === load.request_id) ?? null }));
+}
+
+/**
+ * Two orders at the same store: the runner marks which one the next tap is
+ * for. Lasts long enough to get through checkout.
+ */
+export async function armLoad(runnerId: string, requestId: string): Promise<ActionResult> {
+  const db = admin();
+  const { data: load } = await db
+    .from("card_loads")
+    .select("id")
+    .eq("runner_id", runnerId)
+    .eq("request_id", requestId)
+    .eq("status", "loaded")
+    .maybeSingle();
+  if (!load) return fail("This order isn't on your Dart card");
+  await db.from("card_loads").update({ armed_until: null }).eq("runner_id", runnerId).eq("status", "loaded");
+  await db
+    .from("card_loads")
+    .update({ armed_until: new Date(Date.now() + ARM_MINUTES * 60_000).toISOString() })
+    .eq("id", load.id);
+  return { ok: true };
 }
 
 export async function markPurchased(runnerId: string, requestId: string, photo: unknown): Promise<ActionResult> {
@@ -451,9 +482,9 @@ export async function cancelRequest(requesterId: string, requestId: string): Pro
     const done = await transition(req.id, "claimed", { status: "cancelled", cancelled_at: now, cancelled_stage: "after_claim" });
     if (!done) return fail("Your runner just paid for the items. Refresh to see the update.");
     await payments.releaseHold(req, "cancelled after claim, before purchase");
-    await payments.closeCard(req.id, "cancelled");
+    await payments.unloadCard(req.id, "cancelled");
     await admin().from("request_codes").delete().eq("request_id", req.id);
-    notifyPush(req.runner_id, "Order cancelled", "The requester cancelled before you bought anything. This order's Dart card is now closed.", req);
+    notifyPush(req.runner_id, "Order cancelled", "The requester cancelled before you bought anything. It's been taken off your Dart card.", req);
     return { ok: true };
   }
 
@@ -555,7 +586,7 @@ export async function resolveDispute(
     if (refund > 0) await payments.refund(req, refund, dispute.reason);
     if (payNow) await payments.releasePayout(req, "dispute resolved: runner paid");
     if (input.suspendRunner && req.runner_id) {
-      await payments.freezeRunnerCards(req.runner_id);
+      await payments.freezeRunnerCard(req.runner_id);
       await db.from("profiles").update({ status: "suspended" }).eq("id", req.runner_id);
     }
     notifyPush(req.requester_id, "Your report was resolved", refund > 0 ? `You've been refunded ${money(refund)}.` : "Open Dart for details.", req);
@@ -584,14 +615,15 @@ export async function resolveDispute(
 export async function setUserStatus(adminId: string, userId: string, status: Profile["status"]): Promise<ActionResult> {
   if (!(await requireAdmin(adminId))) return fail("Admins only");
   await admin().from("profiles").update({ status }).eq("id", userId);
-  // Suspended/banned runners can't claim (so get no new cards); stop any open ones.
-  if (status !== "active") await payments.freezeRunnerCards(userId);
+  // Suspended/banned runners can't use their card; reinstated ones get it back (empty).
+  if (status === "active") await payments.unfreezeRunnerCard(userId);
+  else await payments.freezeRunnerCard(userId);
   return { ok: true };
 }
 
-export async function freezeRunnerCards(adminId: string, runnerId: string): Promise<ActionResult> {
+export async function freezeRunnerCard(adminId: string, runnerId: string): Promise<ActionResult> {
   if (!(await requireAdmin(adminId))) return fail("Admins only");
-  await payments.freezeRunnerCards(runnerId);
+  await payments.freezeRunnerCard(runnerId);
   return { ok: true };
 }
 

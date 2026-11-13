@@ -12,6 +12,7 @@ export type Profile = {
   home_screen_at: string | null;
   runner_terms_accepted_at: string | null;
   payouts_ready_at: string | null;
+  card_issued_at: string | null;
   is_admin: boolean;
   status: ProfileStatus;
   no_show_count: number;
@@ -71,23 +72,41 @@ export type DartRequest = {
   payout_released_at: string | null;
 };
 
-/** A temporary Dart card, issued for exactly one claimed order. */
+/**
+ * A runner's one Dart virtual card, created at runner sign-up. The money and
+ * restrictions live on its loads (one per claimed order); with no open loads
+ * it's locked at $0.
+ */
 export type Card = {
   id: string;
   runner_id: string;
-  request_id: string;
   last4: string;
   exp: string;
-  status: "active" | "spent" | "cancelled" | "frozen";
-  limit_cents: number;
-  allowed_category: string;
+  status: "active" | "frozen";
+  frozen_at: string | null;
   created_at: string;
+};
+
+/** One order's load on a runner's card (the per-claim history). */
+export type CardLoad = {
+  id: string;
+  card_id: string;
+  runner_id: string;
+  request_id: string;
+  amount_cents: number;
+  store: string;
+  allowed_category: string;
+  status: "loaded" | "spent" | "unloaded";
+  unload_reason: string | null;
+  armed_until: string | null;
+  loaded_at: string;
   closed_at: string | null;
 };
 
 export type CardAuthorization = {
   id: string;
   card_id: string;
+  card_load_id: string | null;
   runner_id: string;
   request_id: string | null;
   amount_cents: number;

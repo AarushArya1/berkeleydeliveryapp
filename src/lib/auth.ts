@@ -8,7 +8,7 @@ export function isOnboarded(p: Profile) {
 }
 
 export function isRunnerReady(p: Profile) {
-  return Boolean(p.runner_terms_accepted_at && p.payouts_ready_at);
+  return Boolean(p.runner_terms_accepted_at && p.payouts_ready_at && p.card_issued_at);
 }
 
 /** The signed-in user's id, or null. Verifies the JWT. */

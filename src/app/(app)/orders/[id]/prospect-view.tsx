@@ -5,7 +5,7 @@ import { AlarmClock, BadgeCheck, CreditCard, Timer, Wallet } from "lucide-react"
 import { claim } from "@/app/actions";
 import { TimeLeft } from "@/components/time-left";
 import { Button, ButtonLink, Card, Chip, ErrorText, Notice } from "@/components/ui";
-import { CATEGORY_LABEL, DELIVERY_WINDOW_MINUTES, ETA_OPTIONS, getStore } from "@/lib/config";
+import { DELIVERY_WINDOW_MINUTES, ETA_OPTIONS, getStore } from "@/lib/config";
 import { money } from "@/lib/format";
 import type { DartRequest } from "@/lib/types";
 import { BackLink, ItemsCard, OrderHeader, useAction } from "./bits";
@@ -30,8 +30,8 @@ export function ProspectView({ req, ready, active }: { req: DartRequest; ready: 
       </Card>
 
       <Notice tone="lime">
-        Claiming creates a temporary Dart card just for this order (up to {money(req.max_price_cents)} at{" "}
-        {CATEGORY_LABEL[store?.category ?? ""] ?? "this store"}). You never spend your own money.
+        Claiming adds this order to your Dart card: up to {money(req.max_price_cents)}, only at{" "}
+        {store ? `${store.name} ${store.where}` : "this store"}, for one purchase. You never spend your own money.
       </Notice>
 
       {!open ? (

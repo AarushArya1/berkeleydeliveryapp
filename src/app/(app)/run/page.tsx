@@ -61,7 +61,7 @@ async function Run() {
             <BadgeCheck className="size-7 shrink-0 text-action" />
             <div className="flex-1">
               <p className="font-bold text-action-ink">Set up to run · 2 min</p>
-              <p className="text-sm text-action-ink/80">Verify your identity and add where to get paid.</p>
+              <p className="text-sm text-action-ink/80">Learn how the Dart card works, verify your ID and get your card.</p>
             </div>
             <ArrowRight className="size-5 text-action" />
           </Card>
