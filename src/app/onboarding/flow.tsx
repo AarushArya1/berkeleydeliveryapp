@@ -1,0 +1,228 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import clsx from "clsx";
+import { Check, Smartphone } from "lucide-react";
+import { acceptTerms, markHomeScreenDone, saveProfile } from "@/app/actions";
+import { InstallGuide, useInstallState } from "@/components/install-guide";
+import { Logo } from "@/components/logo";
+import { PushButton } from "@/components/push-button";
+import { Button, Card, Checkbox, ErrorText, Input, Label, Select } from "@/components/ui";
+import { DORMS } from "@/lib/config";
+
+type Done = { profile: boolean; homeScreen: boolean; terms: boolean };
+const STEPS = ["About you", "Notifications", "Terms"] as const;
+
+export function OnboardingFlow({
+  email,
+  initial,
+  done,
+}: {
+  email: string;
+  initial: { fullName: string; dorm: string; phone: string };
+  done: Done;
+}) {
+  const step = !done.profile ? 0 : !done.homeScreen ? 1 : 2;
+
+  return (
+    <div className="min-h-dvh bg-gradient-to-b from-lime-50 to-white">
+      <div className="pt-safe mx-auto max-w-md px-5 pb-12">
+        <div className="flex items-center justify-between pt-6">
+          <Logo size={28} />
+          <span className="text-xs font-semibold text-muted">{email}</span>
+        </div>
+
+        <ol className="mt-8 flex gap-2" aria-label="Sign-up steps">
+          {STEPS.map((label, i) => (
+            <li key={label} className="flex-1">
+              <div className={clsx("h-1.5 rounded-full", i <= step ? "bg-action" : "bg-lime-100")} />
+              <p className={clsx("mt-2 text-xs font-bold", i === step ? "text-ink" : "text-muted")}>{label}</p>
+            </li>
+          ))}
+        </ol>
+
+        <div key={step} className="animate-rise mt-8">
+          {step === 0 ? <ProfileStep initial={initial} /> : step === 1 ? <HomeScreenStep /> : <TermsStep />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProfileStep({ initial }: { initial: { fullName: string; dorm: string; phone: string } }) {
+  const [fullName, setFullName] = useState(initial.fullName);
+  const [dorm, setDorm] = useState(initial.dorm);
+  const [phone, setPhone] = useState(initial.phone);
+  const [smsConsent, setSmsConsent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  return (
+    <form
+      className="space-y-5"
+      onSubmit={(e) => {
+        e.preventDefault();
+        setError(null);
+        start(async () => {
+          const r = await saveProfile({ fullName, dorm, phone, smsConsent });
+          if (!r.ok) setError(r.error);
+        });
+      }}
+    >
+      <div>
+        <h1 className="text-3xl font-extrabold tracking-tight">You&apos;re verified 🎉</h1>
+        <p className="mt-2 text-muted">A few details so runners can find you.</p>
+      </div>
+      <div>
+        <Label htmlFor="name">Full name</Label>
+        <Input id="name" autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Oski Bear" />
+      </div>
+      <div>
+        <Label htmlFor="dorm">Dorm</Label>
+        <Select id="dorm" value={dorm} onChange={(e) => setDorm(e.target.value)}>
+          <option value="" disabled>
+            Choose your dorm
+          </option>
+          {DORMS.map((d) => (
+            <option key={d}>{d}</option>
+          ))}
+        </Select>
+      </div>
+      <div>
+        <Label htmlFor="phone" hint="For order texts">
+          Phone number
+        </Label>
+        <Input
+          id="phone"
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel-national"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="(510) 555-0123"
+        />
+      </div>
+      <Checkbox
+        checked={smsConsent}
+        onChange={(e) => setSmsConsent(e.target.checked)}
+        label={
+          <>
+            Text me about my orders, like when a runner claims one. Msg &amp; data rates may apply. Reply STOP to opt out.
+          </>
+        }
+      />
+      <ErrorText>{error}</ErrorText>
+      <Button type="submit" full size="lg" loading={pending} disabled={!fullName || !dorm || !phone || !smsConsent}>
+        Continue
+      </Button>
+    </form>
+  );
+}
+
+function HomeScreenStep() {
+  const install = useInstallState();
+  const [pending, start] = useTransition();
+  const [pushed, setPushed] = useState(false);
+  const finish = () => start(async () => void (await markHomeScreenDone()));
+
+  if (!install) return null;
+  const installed = install.standalone;
+  const desktop = install.platform === "desktop";
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-3xl font-extrabold tracking-tight">Never miss your order</h1>
+        <p className="mt-2 text-muted">
+          Dart lives on your home screen so it can notify you the second a runner claims your order or drops it off.
+        </p>
+      </div>
+
+      <Card className="p-5">
+        <div className="mb-4 flex items-center gap-3">
+          <span
+            className={clsx(
+              "flex size-10 items-center justify-center rounded-full",
+              installed ? "bg-lime-300 text-lime-900" : "bg-lime-100 text-lime-700",
+            )}
+          >
+            {installed ? <Check className="size-5" strokeWidth={3} /> : <Smartphone className="size-5" />}
+          </span>
+          <p className="font-bold">{installed ? "Added to your home screen" : "Add Dart to your home screen"}</p>
+        </div>
+        {installed ? null : <InstallGuide platform={install.platform} />}
+      </Card>
+
+      {installed || desktop ? (
+        <>
+          <PushButton onDone={(r) => setPushed(r === "granted")} />
+          <Button full size="lg" variant={pushed ? "primary" : "secondary"} onClick={finish} loading={pending}>
+            {pushed ? "Continue" : desktop ? "Continue on this computer" : "Skip notifications for now"}
+          </Button>
+        </>
+      ) : (
+        <p className="text-center text-sm text-muted">
+          Once Dart is on your home screen, open it from there and sign in to finish.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function TermsStep() {
+  const router = useRouter();
+  const [agreed, setAgreed] = useState(false);
+  const [pending, start] = useTransition();
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-3xl font-extrabold tracking-tight">The ground rules</h1>
+        <p className="mt-2 text-muted">The short version of our Terms of Service:</p>
+      </div>
+      <Card className="divide-y divide-line">
+        {[
+          ["Holds, not charges", "Posting places a hold. You're charged only what the items cost, plus fees, once they're bought."],
+          ["Cancel free until purchase", "After a runner buys your items, you pay for them even if you cancel."],
+          ["Show up for handoff", "Give your runner your 4-digit code. Repeat no-shows are banned."],
+          ["No restricted items", "No alcohol, tobacco, vapes, prescription drugs or anything age-restricted."],
+          ["Be kind", "Requesters and runners rate each other after every order."],
+        ].map(([t, d]) => (
+          <div key={t} className="p-4">
+            <p className="font-bold">{t}</p>
+            <p className="mt-0.5 text-sm text-muted">{d}</p>
+          </div>
+        ))}
+      </Card>
+      <Checkbox
+        checked={agreed}
+        onChange={(e) => setAgreed(e.target.checked)}
+        label={
+          <>
+            I agree to Dart&apos;s{" "}
+            <Link href="/terms" target="_blank" className="font-semibold text-action underline">
+              Terms of Service
+            </Link>
+            .
+          </>
+        }
+      />
+      <Button
+        full
+        size="lg"
+        disabled={!agreed}
+        loading={pending}
+        onClick={() =>
+          start(async () => {
+            const r = await acceptTerms();
+            if (r.ok) router.replace("/wishlist");
+          })
+        }
+      >
+        Start using Dart
+      </Button>
+    </div>
+  );
+}

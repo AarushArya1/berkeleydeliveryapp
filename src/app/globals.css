@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+/* Dart palette: lime + white, with violet (lime's complement) for actions. */
+@theme {
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+
+  --color-lime-25: #fbfef5;
+  --color-lime-50: #f4fbe6;
+  --color-lime-100: #e8f7c8;
+  --color-lime-200: #d4f09a;
+  --color-lime-300: #bde76a;
+  --color-lime-400: #a3d944;
+  --color-lime-500: #84bd25;
+  --color-lime-700: #4d7a12;
+  --color-lime-900: #26400a;
+
+  --color-ink: #16200d;
+  --color-muted: #66705c;
+  --color-line: #e4ecd7;
+
+  --color-action: #6b3cf2;
+  --color-action-hover: #5a2ce0;
+  --color-action-soft: #efe9ff;
+  --color-action-ink: #3d1ca3;
+
+  --color-danger: #d93a3a;
+  --color-danger-soft: #fdecec;
+  --color-warn-soft: #fff6dc;
+  --color-warn-ink: #8a5a00;
+
+  --radius-card: 1.25rem;
+  --shadow-card: 0 1px 2px rgb(22 32 13 / 0.04), 0 4px 16px rgb(22 32 13 / 0.05);
+  --shadow-float: 0 8px 30px rgb(107 60 242 / 0.28);
+}
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  background: #ffffff;
+  color: var(--color-ink);
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: var(--font-sans);
+  overscroll-behavior-y: none;
+}
+
+input,
+textarea,
+select {
+  font-size: 16px; /* stops iOS zooming into fields */
+}
+
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-rise {
+  animation: rise 0.25s ease-out both;
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgb(163 217 68 / 0.6); }
+  100% { box-shadow: 0 0 0 14px rgb(163 217 68 / 0); }
+}
+.pulse-ring {
+  animation: pulse-ring 1.6s ease-out infinite;
+}
