@@ -1,12 +1,12 @@
 import "server-only";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import { SUPABASE_PUBLIC_KEY, SUPABASE_URL } from "./env";
+import { supabasePublicKey, supabaseUrl } from "./env";
 
 // Acts as the signed-in user: every read goes through Row Level Security.
 export async function createClient() {
   const cookieStore = await cookies();
-  return createServerClient(SUPABASE_URL, SUPABASE_PUBLIC_KEY, {
+  return createServerClient(supabaseUrl(), supabasePublicKey(), {
     cookies: {
       getAll() {
         return cookieStore.getAll();

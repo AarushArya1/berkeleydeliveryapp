@@ -29,7 +29,7 @@ export function LoginForm() {
     }
     const email = `${user}@berkeley.edu`;
     setBusy(true);
-    const { error } = await createClient().auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+    const { error } = await (await createClient()).auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
     setBusy(false);
     if (error) {
       setError(error.message.includes("berkeley.edu") ? "Dart is only open to @berkeley.edu emails." : error.message);
@@ -44,7 +44,7 @@ export function LoginForm() {
     if (!sentTo) return;
     setError(null);
     setBusy(true);
-    const { error } = await createClient().auth.verifyOtp({ email: sentTo, token: code.trim(), type: "email" });
+    const { error } = await (await createClient()).auth.verifyOtp({ email: sentTo, token: code.trim(), type: "email" });
     if (error) {
       setBusy(false);
       setError("That code didn't work. Check your email or send a new one.");

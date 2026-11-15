@@ -55,6 +55,20 @@ update profiles set is_admin = true where email = 'you@berkeley.edu';
 
 Deploy to Vercel and add the same env vars. `vercel.json` runs `/api/cron` every 10 minutes to expire requests and auto-release fallbacks (set `CRON_SECRET`). Pages also run this lazily, so it works without cron too.
 
+**Cloudflare Workers.** `NEXT_PUBLIC_*` values are baked in at build time, so on a Worker set the plain names at runtime (Settings → Variables and Secrets). Add them as **Secrets**, since plain variables set in the dashboard are overwritten by the next deploy unless they're also in a Wrangler config.
+
+| Variable | Needed for |
+| --- | --- |
+| `SUPABASE_URL` | everything (a trailing `/rest/v1/` is fine, it's trimmed) |
+| `SUPABASE_ANON_KEY` (or `SUPABASE_PUBLISHABLE_KEY`) | everything |
+| `SUPABASE_SECRET_KEY` | every signed-in page and action; without it they error |
+| `APP_URL` | links in push notifications (e.g. `https://your-domain`) |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | push notifications |
+| `CRON_SECRET` | `/api/cron` |
+| `TWILIO_*` | texts (optional) |
+
+The browser gets the public ones (Supabase URL + publishable key, VAPID public key) from `/api/public-env` when they weren't baked into the build.
+
 ## Placeholders to replace
 
 | Placeholder | Where | Replace with |

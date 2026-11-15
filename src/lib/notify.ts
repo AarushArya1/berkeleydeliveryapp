@@ -1,23 +1,33 @@
 import "server-only";
 import { sendNotification, setVapidDetails } from "web-push";
 import { admin } from "./supabase/admin";
+import { vapidPublicKey } from "./supabase/env";
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+// Read at call time, not import time, so runtime variables on Cloudflare are
+// picked up (NEXT_PUBLIC_* names are baked in at build).
+function appUrl() {
+  return process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000";
+}
 
-const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
-const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY ?? "";
-const pushConfigured = Boolean(VAPID_PUBLIC && VAPID_PRIVATE);
-if (pushConfigured) {
-  setVapidDetails(process.env.VAPID_SUBJECT ?? "mailto:team@dart.app", VAPID_PUBLIC, VAPID_PRIVATE);
+let vapidReady: boolean | null = null;
+function pushConfigured() {
+  if (vapidReady != null) return vapidReady;
+  const publicKey = vapidPublicKey();
+  const privateKey = process.env.VAPID_PRIVATE_KEY ?? "";
+  vapidReady = Boolean(publicKey && privateKey);
+  if (vapidReady) setVapidDetails(process.env.VAPID_SUBJECT || "mailto:team@dart.app", publicKey, privateKey);
+  return vapidReady;
 }
 
 // SMS goes through Twilio once 10DLC registration is approved. Until the
 // TWILIO_* variables are set, texts are only logged to `notifications`
 // (visible on /admin) so the flow can still be tested.
-const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID ?? "";
-const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN ?? "";
-const TWILIO_FROM = process.env.TWILIO_FROM_NUMBER ?? "";
-const smsConfigured = Boolean(TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM);
+function twilio() {
+  const sid = process.env.TWILIO_ACCOUNT_SID ?? "";
+  const token = process.env.TWILIO_AUTH_TOKEN ?? "";
+  const from = process.env.TWILIO_FROM_NUMBER ?? "";
+  return sid && token && from ? { sid, token, from } : null;
+}
 
 export async function sendSms(userId: string, body: string, requestId?: string) {
   const db = admin();
@@ -25,15 +35,16 @@ export async function sendSms(userId: string, body: string, requestId?: string) 
   if (!profile?.phone || !profile.sms_consent_at) return;
 
   let delivered = false;
-  if (smsConfigured) {
+  const tw = twilio();
+  if (tw) {
     try {
-      const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
+      const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${tw.sid}/Messages.json`, {
         method: "POST",
         headers: {
-          Authorization: `Basic ${Buffer.from(`${TWILIO_SID}:${TWILIO_TOKEN}`).toString("base64")}`,
+          Authorization: `Basic ${Buffer.from(`${tw.sid}:${tw.token}`).toString("base64")}`,
           "Content-Type": "application/x-www-form-urlencoded",
         },
-        body: new URLSearchParams({ To: profile.phone, From: TWILIO_FROM, Body: body }),
+        body: new URLSearchParams({ To: profile.phone, From: tw.from, Body: body }),
       });
       delivered = res.ok;
     } catch (e) {
@@ -48,7 +59,7 @@ export async function sendSms(userId: string, body: string, requestId?: string) 
 export async function sendPush(userId: string, msg: { title: string; body: string; url?: string }, requestId?: string) {
   const db = admin();
   let delivered = false;
-  if (pushConfigured) {
+  if (pushConfigured()) {
     const { data: subs } = await db.from("push_subscriptions").select("*").eq("user_id", userId);
     const payload = JSON.stringify({ title: msg.title, body: msg.body, url: msg.url ?? "/" });
     await Promise.all(
@@ -74,5 +85,5 @@ export function orderUrl(requestId: string) {
 }
 
 export function absoluteUrl(path: string) {
-  return new URL(path, APP_URL).toString();
+  return new URL(path, appUrl()).toString();
 }

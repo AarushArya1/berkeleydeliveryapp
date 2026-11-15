@@ -1,18 +1,18 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { SUPABASE_PUBLIC_KEY, SUPABASE_URL, supabaseConfigured } from "./env";
+import { supabaseConfigured, supabasePublicKey, supabaseUrl } from "./env";
 
-const PUBLIC_PATHS = ["/", "/login", "/terms", "/setup"];
+const PUBLIC_PATHS = ["/", "/login", "/terms", "/setup", "/api/public-env"];
 
 export async function updateSession(request: NextRequest) {
-  if (!supabaseConfigured) {
+  if (!supabaseConfigured()) {
     if (request.nextUrl.pathname === "/setup") return NextResponse.next();
     return NextResponse.redirect(new URL("/setup", request.url));
   }
 
   let response = NextResponse.next({ request });
 
-  const supabase = createServerClient(SUPABASE_URL, SUPABASE_PUBLIC_KEY, {
+  const supabase = createServerClient(supabaseUrl(), supabasePublicKey(), {
     cookies: {
       getAll() {
         return request.cookies.getAll();

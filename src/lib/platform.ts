@@ -1,5 +1,7 @@
 "use client";
 
+import { publicEnv } from "./public-env";
+
 export type Platform = "ios" | "android" | "desktop";
 
 export function detectPlatform(): Platform {
@@ -29,7 +31,7 @@ export async function enablePush(save: (sub: PushSubscriptionJSON) => Promise<un
   if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return "unsupported";
   const permission = await Notification.requestPermission();
   if (permission !== "granted") return "denied";
-  const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  const key = (await publicEnv().catch(() => null))?.vapidPublicKey;
   if (!key) return "granted"; // push keys not configured yet; permission is still recorded
   const reg = await navigator.serviceWorker.ready;
   const sub =
