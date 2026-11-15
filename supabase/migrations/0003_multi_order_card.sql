@@ -12,6 +12,7 @@ create unique index if not exists card_loads_one_open_per_request on public.card
 
 -- Cards: the order details live on the loads now, so the card only knows
 -- whether it's usable.
+
 alter table public.cards drop constraint if exists cards_loaded_has_order;
 alter table public.cards drop constraint if exists cards_status_check;
 update public.cards set status = case when status = 'frozen' then 'frozen' else 'active' end;
