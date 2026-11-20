@@ -6,11 +6,13 @@ import { ButtonLink, Card, EmptyState, PageSkeleton, SectionTitle } from "@/comp
 import { getMember } from "@/lib/auth";
 import { money } from "@/lib/format";
 import { ratingFor, runMaintenance } from "@/lib/orders";
+import { owesRunner } from "@/lib/pay";
 import type { DartRequest } from "@/lib/types";
 
 export const metadata = { title: "My runs · Dart" };
 
 const ACTIVE = ["claimed", "purchased", "delivering", "dropped_off", "disputed"];
+const isActive = (r: DartRequest) => ACTIVE.includes(r.status) || owesRunner(r);
 
 export default function JobsPage() {
   return (
@@ -34,10 +36,11 @@ async function Jobs() {
     ratingFor(userId),
   ]);
   const runs = data ?? [];
-  const active = runs.filter((r) => ACTIVE.includes(r.status));
-  const past = runs.filter((r) => !ACTIVE.includes(r.status));
-  const earned = runs.filter((r) => r.payout_status === "released").reduce((s, r) => s + r.runner_fee_cents, 0);
-  const pending = runs.filter((r) => r.payout_status === "pending").reduce((s, r) => s + r.runner_fee_cents, 0);
+  const active = runs.filter(isActive);
+  const past = runs.filter((r) => !isActive(r));
+  const earned = runs.filter((r) => r.status === "completed").reduce((s, r) => s + r.runner_fee_cents, 0);
+  // Bought with the runner's money and not paid back yet.
+  const owedToYou = runs.filter(owesRunner).reduce((s, r) => s + (r.charged_cents ?? 0), 0);
   const completed = runs.filter((r) => r.status === "completed").length;
 
   return (
@@ -47,7 +50,7 @@ async function Jobs() {
 
       <Card className="mt-5 grid grid-cols-3 divide-x divide-line bg-lime-50/60 py-4 text-center">
         <Stat label="Earned" value={money(earned)} />
-        <Stat label="Pending" value={money(pending)} />
+        <Stat label="Owed to you" value={money(owedToYou)} />
         <Stat label="Rating" value={rating.avg ? `${rating.avg.toFixed(1)}★` : "—"} sub={`${completed} done`} />
       </Card>
 

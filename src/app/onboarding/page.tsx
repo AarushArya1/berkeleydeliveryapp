@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { LogoMark } from "@/components/logo";
 import { getViewer, isOnboarded } from "@/lib/auth";
+import { formatZelle, hasPayAccount } from "@/lib/pay";
 import { OnboardingFlow } from "./flow";
 
 export default function OnboardingPage() {
@@ -24,9 +25,15 @@ async function Onboarding() {
   return (
     <OnboardingFlow
       email={profile.email}
-      initial={{ fullName: profile.full_name ?? "", dorm: profile.dorm ?? "", phone: profile.phone?.replace(/^\+1/, "") ?? "" }}
+      initial={{
+        fullName: profile.full_name ?? "",
+        dorm: profile.dorm ?? "",
+        phone: profile.phone?.replace(/^\+1/, "") ?? "",
+        venmo: profile.venmo_username ?? "",
+        zelle: profile.zelle_contact ? formatZelle(profile.zelle_contact) : "",
+      }}
       done={{
-        profile: Boolean(profile.full_name && profile.dorm && profile.phone && profile.sms_consent_at),
+        profile: Boolean(profile.full_name && profile.dorm && profile.phone && hasPayAccount(profile) && profile.sms_consent_at),
         homeScreen: Boolean(profile.home_screen_at),
         terms: Boolean(profile.tos_accepted_at),
       }}

@@ -6,6 +6,7 @@ import { ButtonLink, EmptyState, Notice, PageSkeleton, SectionTitle } from "@/co
 import { getMember } from "@/lib/auth";
 import { firstName } from "@/lib/format";
 import { runMaintenance } from "@/lib/orders";
+import { owesRunner } from "@/lib/pay";
 import type { DartRequest } from "@/lib/types";
 
 export const metadata = { title: "Shopping list · Dart" };
@@ -31,8 +32,10 @@ async function Wishlist() {
     .limit(50)
     .returns<DartRequest[]>();
   const requests = data ?? [];
-  const active = requests.filter((r) => ACTIVE.includes(r.status));
-  const past = requests.filter((r) => !ACTIVE.includes(r.status));
+  // Still owing the runner (e.g. cancelled after it was bought) keeps it up top.
+  const isActive = (r: DartRequest) => ACTIVE.includes(r.status) || owesRunner(r);
+  const active = requests.filter(isActive);
+  const past = requests.filter((r) => !isActive(r));
 
   return (
     <div className="px-4 pt-5">

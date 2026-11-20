@@ -3,39 +3,33 @@
 import { useState, useTransition } from "react";
 import { resolveDispute, runMaintenanceNow, setUserStatus } from "@/app/actions";
 import { Button, Checkbox, ErrorText, Input, Select } from "@/components/ui";
-import { dollarsToCents } from "@/lib/format";
 
-export function DisputeResolver({ disputeId, chargedCents }: { disputeId: string; chargedCents: number }) {
-  const [refund, setRefund] = useState((chargedCents / 100).toFixed(2));
-  const [payRunner, setPayRunner] = useState(false);
-  const [suspend, setSuspend] = useState(false);
+export function DisputeResolver({ disputeId, unpaid }: { disputeId: string; unpaid: boolean }) {
+  const [banRequester, setBanRequester] = useState(false);
+  const [suspendRunner, setSuspendRunner] = useState(false);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
-  const go = (outcome: "refund" | "reject") =>
+  const go = (outcome: "settled" | "cancel") =>
     start(async () => {
       setError(null);
-      const r = await resolveDispute(disputeId, { outcome, refundCents: dollarsToCents(refund) || 0, payRunner, suspendRunner: suspend, note });
+      const r = await resolveDispute(disputeId, { outcome, banRequester, suspendRunner, note });
       if (!r.ok) setError(r.error);
     });
 
   return (
     <div className="space-y-3 border-t border-line pt-3">
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-semibold">Refund $</span>
-        <Input className="h-10 w-28" inputMode="decimal" value={refund} onChange={(e) => setRefund(e.target.value)} />
-      </div>
-      <Checkbox checked={payRunner} onChange={(e) => setPayRunner(e.target.checked)} label="Still pay the runner their fee (e.g. damage wasn't their fault)" />
-      <Checkbox checked={suspend} onChange={(e) => setSuspend(e.target.checked)} label="Freeze runner's card and suspend their account" />
-      <Input className="h-10" placeholder="Note to requester (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+      <Checkbox checked={banRequester} onChange={(e) => setBanRequester(e.target.checked)} label="Ban the requester (e.g. never paid)" />
+      <Checkbox checked={suspendRunner} onChange={(e) => setSuspendRunner(e.target.checked)} label="Suspend the runner (e.g. didn't deliver, overcharged)" />
+      <Input className="h-10" placeholder="Note to both (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
       <ErrorText>{error}</ErrorText>
       <div className="flex gap-2">
-        <Button size="sm" loading={pending} onClick={() => go("refund")}>
-          Refund from reserve
+        <Button size="sm" loading={pending} onClick={() => go("settled")}>
+          {unpaid ? "Paid now: complete it" : "Resolved: complete it"}
         </Button>
-        <Button size="sm" variant="secondary" loading={pending} onClick={() => go("reject")}>
-          Reject
+        <Button size="sm" variant="secondary" loading={pending} onClick={() => go("cancel")}>
+          Close: nothing owed
         </Button>
       </div>
     </div>
@@ -62,7 +56,7 @@ export function MaintenanceButton() {
   const [pending, start] = useTransition();
   return (
     <Button size="sm" variant="secondary" loading={pending} onClick={() => start(async () => void (await runMaintenanceNow()))}>
-      Run expiry &amp; auto-release
+      Run expiry &amp; auto-complete
     </Button>
   );
 }

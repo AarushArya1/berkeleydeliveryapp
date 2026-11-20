@@ -8,7 +8,8 @@ import { signedPhotoUrl } from "@/lib/storage";
 import { ratingFor, runMaintenance } from "@/lib/orders";
 import { displayName } from "@/lib/format";
 import { DISPUTE_WINDOW_HOURS, runnerBudgetCents } from "@/lib/config";
-import type { Card, CardAuthorization, CardLoad, DartRequest, Dispute } from "@/lib/types";
+import { payMethods } from "@/lib/pay";
+import type { DartRequest, Dispute } from "@/lib/types";
 import { RequesterView } from "./requester-view";
 import { RunnerView } from "./runner-view";
 import { ProspectView } from "./prospect-view";
@@ -16,19 +17,18 @@ import { ProspectView } from "./prospect-view";
 export const metadata = { title: "Order · Dart" };
 
 function canDispute(req: DartRequest) {
-  if (["purchased", "delivering", "dropped_off"].includes(req.status)) return true;
+  if (["claimed", "delivering", "dropped_off"].includes(req.status)) return true;
   return req.status === "completed" && Boolean(req.completed_at) && Date.now() - new Date(req.completed_at!).getTime() < DISPUTE_WINDOW_HOURS * 3600_000;
 }
 
-/** Of the runner's orders at one store, the one their next tap is pointed at. */
-function armedRequestId(loads: CardLoad[]) {
-  const armed = loads
-    .filter((l) => l.armed_until && new Date(l.armed_until).getTime() > Date.now())
-    .sort((a, b) => b.armed_until!.localeCompare(a.armed_until!));
-  return armed[0]?.request_id ?? null;
-}
-
-export type Counterpart = { name: string; rating: number | null; ratingCount: number } | null;
+export type Counterpart = {
+  name: string;
+  rating: number | null;
+  ratingCount: number;
+  /** Their Venmo / Zelle: the runner's for the requester to pay, the requester's so the runner knows what to expect. */
+  venmo: string | null;
+  zelle: string | null;
+} | null;
 
 export default function OrderPage({ params, searchParams }: PageProps<"/orders/[id]">) {
   return (
@@ -54,13 +54,7 @@ async function Order({ params, searchParams }: Pick<PageProps<"/orders/[id]">, "
   const isRunner = req.runner_id === userId;
 
   if (!isRequester && !isRunner) {
-    const { data: loads } = await supabase
-      .from("card_loads")
-      .select("amount_cents")
-      .eq("runner_id", userId)
-      .eq("status", "loaded")
-      .returns<Pick<CardLoad, "amount_cents">[]>();
-    const loadedCents = (loads ?? []).reduce((sum, l) => sum + l.amount_cents, 0);
+    const { data: requester } = await admin().from("profiles").select("venmo_username, zelle_contact").eq("id", req.requester_id).single();
     return (
       <>
         <RealtimeRefresh channel={`order-${id}`} filter={`id=eq.${id}`} />
@@ -69,7 +63,8 @@ async function Order({ params, searchParams }: Pick<PageProps<"/orders/[id]">, "
           ready={isRunnerReady(profile)}
           active={profile.status === "active"}
           budgetCents={runnerBudgetCents(profile)}
-          loadedCents={loadedCents}
+          requesterMethods={requester ? payMethods(requester) : []}
+          myMethods={payMethods(profile)}
         />
       </>
     );
@@ -77,12 +72,16 @@ async function Order({ params, searchParams }: Pick<PageProps<"/orders/[id]">, "
 
   const counterpartId = isRequester ? req.runner_id : req.requester_id;
   const db = admin();
-  const [{ data: priv }, { data: codeRow }, counterpartProfile, counterpartRating, itemsPhoto, dropoffPhoto, { data: dispute }, { data: myRating }] =
+  const [{ data: priv }, { data: codeRow }, counterpartProfile, counterpartRating, receiptPhoto, itemsPhoto, dropoffPhoto, { data: dispute }, { data: myRating }] =
     await Promise.all([
       supabase.from("request_private").select("dropoff_spot").eq("request_id", id).maybeSingle(),
+      // Only the requester can read their handoff code (RLS).
       isRequester ? supabase.from("request_codes").select("code").eq("request_id", id).maybeSingle() : Promise.resolve({ data: null }),
-      counterpartId ? db.from("profiles").select("full_name").eq("id", counterpartId).single() : Promise.resolve({ data: null }),
+      counterpartId
+        ? db.from("profiles").select("full_name, venmo_username, zelle_contact").eq("id", counterpartId).single()
+        : Promise.resolve({ data: null }),
       counterpartId ? ratingFor(counterpartId) : Promise.resolve(null),
+      signedPhotoUrl(req.receipt_photo_path),
       signedPhotoUrl(req.items_photo_path),
       signedPhotoUrl(req.dropoff_photo_path),
       supabase.from("disputes").select("*").eq("request_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle<Dispute>(),
@@ -91,13 +90,20 @@ async function Order({ params, searchParams }: Pick<PageProps<"/orders/[id]">, "
 
   const counterpart: Counterpart =
     counterpartId && counterpartProfile.data
-      ? { name: displayName(counterpartProfile.data.full_name), rating: counterpartRating?.avg ?? null, ratingCount: counterpartRating?.count ?? 0 }
+      ? {
+          name: displayName(counterpartProfile.data.full_name),
+          rating: counterpartRating?.avg ?? null,
+          ratingCount: counterpartRating?.count ?? 0,
+          venmo: counterpartProfile.data.venmo_username,
+          zelle: counterpartProfile.data.zelle_contact,
+        }
       : null;
 
   const shared = {
     req,
     spot: priv?.dropoff_spot ?? null,
     counterpart,
+    receiptPhoto,
     itemsPhoto,
     dropoffPhoto,
     dispute: dispute ?? null,
@@ -113,24 +119,10 @@ async function Order({ params, searchParams }: Pick<PageProps<"/orders/[id]">, "
     );
   }
 
-  const [{ data: card }, { data: loads }, { data: auths }] = await Promise.all([
-    // The runner's one Dart card, and every order on it right now.
-    supabase.from("cards").select("*").eq("runner_id", userId).maybeSingle<Card>(),
-    supabase.from("card_loads").select("*").eq("runner_id", userId).eq("status", "loaded").returns<CardLoad[]>(),
-    supabase
-      .from("card_authorizations")
-      .select("*")
-      .eq("request_id", id)
-      .eq("runner_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(5)
-      .returns<CardAuthorization[]>(),
-  ]);
-
   return (
     <>
       <RealtimeRefresh channel={`order-${id}`} filter={`id=eq.${id}`} />
-      <RunnerView {...shared} card={card ?? null} loads={loads ?? []} armedRequestId={armedRequestId(loads ?? [])} auths={auths ?? []} />
+      <RunnerView {...shared} />
     </>
   );
 }

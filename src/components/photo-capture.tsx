@@ -19,7 +19,7 @@ async function shrink(file: File, maxSide = 1600): Promise<File> {
   }
 }
 
-export function PhotoCapture({ label, onChange }: { label: string; onChange: (file: File | null) => void }) {
+export function PhotoCapture({ label, onChange, maxSide }: { label: string; onChange: (file: File | null) => void; maxSide?: number }) {
   const input = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
 
@@ -34,7 +34,7 @@ export function PhotoCapture({ label, onChange }: { label: string; onChange: (fi
         onChange={async (e) => {
           const f = e.target.files?.[0];
           if (!f) return;
-          const small = await shrink(f);
+          const small = await shrink(f, maxSide);
           setPreview(URL.createObjectURL(small));
           onChange(small);
         }}

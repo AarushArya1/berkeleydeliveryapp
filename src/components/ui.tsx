@@ -145,14 +145,6 @@ export function Notice({ tone = "lime", children, className }: { tone?: "lime" |
   );
 }
 
-export function Placeholder({ children }: { children: ReactNode }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-md border border-dashed border-action/40 bg-action-soft px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-action-ink">
-      {children}
-    </span>
-  );
-}
-
 export function SectionTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
     <div className="mb-3 mt-7 flex items-center justify-between first:mt-0">

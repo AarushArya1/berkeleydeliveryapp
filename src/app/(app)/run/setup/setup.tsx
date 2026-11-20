@@ -3,38 +3,48 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
-import { Check, CreditCard, IdCard, Landmark, ShieldAlert } from "lucide-react";
-import { acceptRunnerTerms, completePayoutSetup, createDartCard } from "@/app/actions";
-import { DartCardRules, DartCardVisual } from "@/components/dart-card";
+import { Check, HandCoins, Receipt, ShieldAlert, ShoppingBag, Timer, Wallet } from "lucide-react";
+import { acceptRunnerTerms, setRunnerBudget } from "@/app/actions";
+import { PayAccountsEditor } from "@/components/pay-accounts";
 import { BudgetStepper } from "@/components/runner-budget";
-import { Button, ButtonLink, Card, Checkbox, ErrorText, Placeholder } from "@/components/ui";
-import { RUNNER_CARD_WARNING } from "@/lib/legal";
+import { Button, ButtonLink, Card, Checkbox, ErrorText } from "@/components/ui";
+import { CONSEQUENCES, RUNNER_PROMISE } from "@/lib/legal";
 import { DELIVERY_WINDOW_MINUTES, RUNNER_BUDGET } from "@/lib/config";
-import type { Card as DartCard, CardLoad } from "@/lib/types";
+import { money } from "@/lib/format";
+import { formatZelle } from "@/lib/pay";
+
+const HOW_IT_WORKS = [
+  { icon: ShoppingBag, title: "You buy it with your own money", body: "Card, Apple Pay, whatever you use. Only claim orders you're comfortable fronting." },
+  { icon: Receipt, title: "Upload the receipt first", body: "Send a photo of it and its total. Your exact fee is set from the real price, and the requester checks the receipt before paying. Keep the paper receipt until you're paid, so you can return the items if you have to." },
+  { icon: HandCoins, title: "Get paid, then enter their code", body: "At handoff the requester pays you the receipt total plus your fee by Venmo or Zelle, then gives you a 4-digit code. Enter it to finish." },
+  { icon: Timer, title: `${DELIVERY_WINDOW_MINUTES} minutes from when you claim`, body: "To buy it and hand it off. Claim when you're about to head to the store or already there." },
+] as const;
 
 export function RunnerSetup({
   termsDone,
-  payoutsDone,
-  card,
-  loads,
+  venmo,
+  zelle,
+  budgetCents,
 }: {
   termsDone: boolean;
-  payoutsDone: boolean;
-  card: DartCard | null;
-  loads: CardLoad[];
+  venmo: string | null;
+  zelle: string | null;
+  budgetCents: number | null;
 }) {
   const router = useRouter();
   const [agreed, setAgreed] = useState(false);
-  const [budget, setBudget] = useState(RUNNER_BUDGET.defaultCents);
+  const [budget, setBudget] = useState(budgetCents ?? RUNNER_BUDGET.defaultCents);
+  const [editingPay, setEditingPay] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const cardDone = Boolean(card);
-  const allDone = termsDone && payoutsDone && cardDone;
+  const payDone = Boolean(venmo || zelle) && !editingPay;
+  const budgetDone = budgetCents != null;
+  const allDone = termsDone && payDone && budgetDone;
 
   return (
     <div className="px-4 pb-8 pt-5">
       <h1 className="text-2xl font-extrabold tracking-tight">Become a runner</h1>
-      <p className="mt-1 text-muted">Three quick steps before your first order. You&apos;ll never spend your own money.</p>
+      <p className="mt-1 text-muted">Three quick steps before your first order.</p>
 
       <div className="mt-6 space-y-4">
         <Card className={clsx("p-5", termsDone && "opacity-70")}>
@@ -43,18 +53,31 @@ export function RunnerSetup({
               <ShieldAlert className="size-5" />
             </StepIcon>
             <div className="flex-1">
-              <p className="font-bold">How your Dart card works</p>
-              {termsDone ? null : <p className="text-sm text-muted">You get one virtual card. Dart loads it for each order you claim.</p>}
+              <p className="font-bold">How running works</p>
+              {termsDone ? null : <p className="text-sm text-muted">You front the money; the requester pays you back at handoff.</p>}
             </div>
           </div>
           {termsDone ? null : (
             <div className="mt-5 space-y-5">
-              <DartCardRules />
-              <p className="rounded-2xl bg-warn-soft p-4 text-[15px] font-medium leading-relaxed text-warn-ink">{RUNNER_CARD_WARNING}</p>
+              <ul className="space-y-3">
+                {HOW_IT_WORKS.map(({ icon: Icon, title, body }) => (
+                  <li key={title} className="flex gap-3">
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-action-soft text-action">
+                      <Icon className="size-4" />
+                    </span>
+                    <div>
+                      <p className="text-[15px] font-bold leading-tight">{title}</p>
+                      <p className="text-sm text-muted">{body}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <Consequences />
+              <p className="rounded-2xl bg-warn-soft p-4 text-[15px] font-medium leading-relaxed text-warn-ink">{RUNNER_PROMISE}</p>
               <Checkbox
                 checked={agreed}
                 onChange={(e) => setAgreed(e.target.checked)}
-                label="I understand and agree to only use my Dart card for the orders loaded on it."
+                label="I understand, and I agree to deliver what I claim and only ask for the amount in the app."
               />
               <Button full disabled={!agreed} loading={pending} onClick={() => start(async () => void (await acceptRunnerTerms()))}>
                 I agree
@@ -63,83 +86,66 @@ export function RunnerSetup({
           )}
         </Card>
 
-        <Card className={clsx("p-5", !termsDone && "pointer-events-none opacity-50", payoutsDone && "opacity-70")}>
+        <Card className={clsx("p-5", !termsDone && "pointer-events-none opacity-50", payDone && "opacity-70")}>
           <div className="flex items-center gap-3">
-            <StepIcon done={payoutsDone}>
-              <Landmark className="size-5" />
+            <StepIcon done={payDone}>
+              <HandCoins className="size-5" />
             </StepIcon>
             <div className="flex-1">
-              <p className="font-bold">Verify ID &amp; set up payouts</p>
-              <p className="text-sm text-muted">Through Stripe: an ID check plus a bank account or debit card.</p>
+              <p className="font-bold">How you get paid</p>
+              <p className="text-sm text-muted">
+                {payDone
+                  ? [venmo ? `Venmo @${venmo}` : null, zelle ? `Zelle ${formatZelle(zelle)}` : null].filter(Boolean).join(" · ")
+                  : "Requesters pay you back here at handoff."}
+              </p>
             </div>
-          </div>
-          {termsDone && !payoutsDone ? (
-            <div className="mt-4 space-y-3">
-              <div className="flex items-center justify-between rounded-2xl border border-dashed border-action/30 bg-action-soft/50 p-3.5">
-                <span className="flex items-center gap-2 text-sm font-semibold text-action-ink">
-                  <IdCard className="size-5" /> Stripe Connect onboarding
-                </span>
-                <Placeholder>Placeholder</Placeholder>
-              </div>
-              <Button full loading={pending} onClick={() => start(async () => void (await completePayoutSetup()))}>
-                Continue to Stripe
+            {payDone && termsDone ? (
+              <Button size="sm" variant="ghost" onClick={() => setEditingPay(true)}>
+                Change
               </Button>
-              <p className="text-center text-xs text-muted">Fees pay out daily and usually arrive in 1–2 business days.</p>
+            ) : null}
+          </div>
+          {termsDone && !payDone ? (
+            <div className="mt-4">
+              <PayAccountsEditor
+                initialVenmo={venmo ?? ""}
+                initialZelle={zelle ? formatZelle(zelle) : ""}
+                submitLabel="Save"
+                onSaved={() => setEditingPay(false)}
+              />
             </div>
           ) : null}
         </Card>
 
-        <Card className={clsx("p-5", !(termsDone && payoutsDone) && "pointer-events-none opacity-50")}>
+        <Card className={clsx("p-5", !(termsDone && payDone) && "pointer-events-none opacity-50")}>
           <div className="flex items-center gap-3">
-            <StepIcon done={cardDone}>
-              <CreditCard className="size-5" />
+            <StepIcon done={budgetDone}>
+              <Wallet className="size-5" />
             </StepIcon>
             <div className="flex-1">
-              <p className="font-bold">{cardDone ? "Your Dart card" : "Create your Dart card"}</p>
+              <p className="font-bold">Most you&apos;ll front per order</p>
               <p className="text-sm text-muted">
-                {cardDone ? "Each order you claim is loaded onto it." : "Your one virtual card for every run."}
+                {budgetDone ? `Up to ${money(budgetCents)}. Change it any time on the Run tab.` : "You'll only see orders at or under it."}
               </p>
             </div>
           </div>
-          {termsDone && payoutsDone ? (
+          {termsDone && payDone && !budgetDone ? (
             <div className="mt-4 space-y-3">
-              {card ? (
-                <>
-                  <DartCardVisual card={card} loads={loads} />
-                  <div className="flex items-center justify-between rounded-2xl border border-dashed border-action/30 bg-action-soft/50 p-3.5">
-                    <span className="text-sm font-semibold text-action-ink">Add to Apple Pay / Google Pay</span>
-                    <Placeholder>Stripe Issuing</Placeholder>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p className="text-sm text-muted">
-                    It starts locked with nothing on it. Each order you claim is added with its own limit (the max price) and its own store,
-                    and comes off the card right after you pay for it.
-                  </p>
-                  <div className="rounded-2xl border border-line p-4">
-                    <p className="font-bold">Your budget</p>
-                    <p className="mb-4 text-sm text-muted">
-                      The most you&apos;re willing to have on your card at once, across all your orders. Dart pays, not you. You can
-                      change it any time on the Run tab.
-                    </p>
-                    <BudgetStepper value={budget} onChange={setBudget} />
-                  </div>
-                  <ErrorText>{error}</ErrorText>
-                  <Button
-                    full
-                    loading={pending}
-                    onClick={() =>
-                      start(async () => {
-                        const r = await createDartCard(budget);
-                        setError(r.ok ? null : r.error);
-                      })
-                    }
-                  >
-                    Create my Dart card
-                  </Button>
-                </>
-              )}
+              <BudgetStepper value={budget} onChange={setBudget} />
+              <p className="text-xs text-muted">Orders with a higher max price pay a slightly higher fee.</p>
+              <ErrorText>{error}</ErrorText>
+              <Button
+                full
+                loading={pending}
+                onClick={() =>
+                  start(async () => {
+                    const r = await setRunnerBudget(budget);
+                    setError(r.ok ? null : r.error);
+                  })
+                }
+              >
+                Save
+              </Button>
             </div>
           ) : null}
         </Card>
@@ -156,6 +162,32 @@ export function RunnerSetup({
           </ButtonLink>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** What happens if either side breaks the deal. */
+export function Consequences({ className }: { className?: string }) {
+  return (
+    <div className={clsx("grid gap-3", className)}>
+      {(
+        [
+          ["If a requester doesn't hold up their end", CONSEQUENCES.requester],
+          ["If you don't hold up yours", CONSEQUENCES.runner],
+        ] as const
+      ).map(([title, rows]) => (
+        <div key={title} className="rounded-2xl border border-line p-4">
+          <p className="mb-2 text-[13px] font-bold uppercase tracking-wider text-muted">{title}</p>
+          <dl className="space-y-2 text-sm">
+            {rows.map(([k, v]) => (
+              <div key={k}>
+                <dt className="font-bold text-ink">{k}</dt>
+                <dd className="text-muted">{v}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ))}
     </div>
   );
 }

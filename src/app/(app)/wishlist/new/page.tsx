@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { Notice, PageSkeleton } from "@/components/ui";
 import { getMember } from "@/lib/auth";
 import { LAUNCH_ZONES } from "@/lib/config";
+import { payMethods } from "@/lib/pay";
 import { NewRequestForm } from "./form";
 
 export const metadata = { title: "Add to shopping list · Dart" };
@@ -27,6 +28,7 @@ async function NewRequest() {
     <NewRequestForm
       defaultZone={profile.dorm && LAUNCH_ZONES.includes(profile.dorm) ? profile.dorm : LAUNCH_ZONES[0]}
       defaultSpot={profile.default_spot ?? ""}
+      payMethods={payMethods(profile)}
     />
   );
 }

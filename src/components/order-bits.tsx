@@ -1,6 +1,5 @@
 import clsx from "clsx";
 import { getStore } from "@/lib/config";
-import { breakdown } from "@/lib/fees";
 import { money } from "@/lib/format";
 import type { RequestStatus } from "@/lib/types";
 
@@ -28,14 +27,14 @@ type Perspective = "requester" | "runner";
 const LABELS: Record<RequestStatus, Record<Perspective, string>> = {
   open: { requester: "Waiting for a runner", runner: "Open" },
   claimed: { requester: "Runner claimed it", runner: "Go buy it" },
-  purchased: { requester: "Bought", runner: "Snap a photo" },
-  delivering: { requester: "On the way", runner: "Deliver" },
-  dropped_off: { requester: "Left at drop-off", runner: "Dropped off" },
-  completed: { requester: "Delivered", runner: "Done" },
+  purchased: { requester: "Bought", runner: "Bought" },
+  delivering: { requester: "On the way · pay at handoff", runner: "Deliver & get paid" },
+  dropped_off: { requester: "Left at your spot · pay now", runner: "Dropped off · awaiting pay" },
+  completed: { requester: "Delivered & paid", runner: "Paid" },
   cancelled: { requester: "Cancelled", runner: "Cancelled" },
-  expired: { requester: "Closed · not charged", runner: "Closed" },
+  expired: { requester: "Closed · nothing owed", runner: "Closed" },
   disputed: { requester: "Under review", runner: "Under review" },
-  refunded: { requester: "Refunded", runner: "Refunded" },
+  refunded: { requester: "Closed", runner: "Closed" },
 };
 
 const ACTIVE: RequestStatus[] = ["claimed", "purchased", "delivering", "dropped_off"];
@@ -58,25 +57,26 @@ export function StatusPill({ status, as }: { status: RequestStatus; as: Perspect
   );
 }
 
+/** What the requester pays the runner at handoff: items + runner fee. No other fees. */
 export function PriceBreakdown({
   itemsCents,
   runnerFeeCents,
-  dartFeeCents,
+  miles,
+  estimate = false,
   itemsLabel = "Items, receipt total",
-  totalLabel = "You pay",
+  totalLabel = "You pay your runner",
 }: {
   itemsCents: number;
-  runnerFeeCents?: number;
-  dartFeeCents?: number;
+  runnerFeeCents: number;
+  miles?: number | null;
+  /** Before the receipt is in, the fee is an estimate from the max price. */
+  estimate?: boolean;
   itemsLabel?: string;
   totalLabel?: string;
 }) {
-  const b = breakdown(itemsCents, runnerFeeCents, dartFeeCents);
   const rows = [
-    [itemsLabel, b.itemsCents],
-    ["Runner fee", b.runnerFeeCents],
-    ["Dart fee", b.dartFeeCents],
-    ["Card processing", b.processingCents],
+    [itemsLabel, itemsCents],
+    [`${estimate ? "Runner fee, est." : "Runner fee"}${miles != null ? ` (~${miles} mi)` : ""}`, runnerFeeCents],
   ] as const;
   return (
     <dl className="space-y-1.5 text-sm">
@@ -88,7 +88,7 @@ export function PriceBreakdown({
       ))}
       <div className="flex justify-between border-t border-line pt-2 text-base font-bold text-ink">
         <dt>{totalLabel}</dt>
-        <dd className="tabular-nums">{money(b.totalCents)}</dd>
+        <dd className="tabular-nums">{money(itemsCents + runnerFeeCents)}</dd>
       </div>
     </dl>
   );

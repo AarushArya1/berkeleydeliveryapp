@@ -47,13 +47,12 @@ export function BudgetStepper({ value, onChange }: { value: number; onChange: (c
   );
 }
 
-/** The runner's budget on the Run tab: how much is on their card now, and a way to change it. */
-export function RunnerBudget({ budgetCents, loadedCents }: { budgetCents: number; loadedCents: number }) {
+/** The runner's max per order on the Run tab, and a way to change it. */
+export function RunnerBudget({ budgetCents, hiddenCount }: { budgetCents: number; hiddenCount: number }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(budgetCents);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const left = Math.max(0, budgetCents - loadedCents);
 
   return (
     <Card className="mt-5 p-4">
@@ -62,9 +61,11 @@ export function RunnerBudget({ budgetCents, loadedCents }: { budgetCents: number
           <Wallet className="size-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="font-bold leading-tight">Budget {whole(budgetCents)}</p>
+          <p className="font-bold leading-tight">Up to {whole(budgetCents)} per order</p>
           <p className="text-sm text-muted">
-            {loadedCents > 0 ? `${whole(loadedCents)} on your card · ${whole(left)} left` : "The most you'll carry on your card at once"}
+            {hiddenCount > 0
+              ? `${hiddenCount} order${hiddenCount === 1 ? "" : "s"} over your max ${hiddenCount === 1 ? "is" : "are"} hidden`
+              : "The most you'll front for one order"}
           </p>
         </div>
         {editing ? null : (
@@ -77,8 +78,8 @@ export function RunnerBudget({ budgetCents, loadedCents }: { budgetCents: number
         <div className="animate-rise mt-4 space-y-3">
           <BudgetStepper value={value} onChange={setValue} />
           <p className="text-xs leading-relaxed text-muted">
-            Orders you claim can add up to this much on your Dart card at a time. Dart pays, not you; this just caps how much you shop for
-            per trip.
+            You pay for the items yourself and get paid back at handoff, so you&apos;ll only see orders whose max price is at or under
+            this. Pricier orders pay a slightly higher fee.
           </p>
           <ErrorText>{error}</ErrorText>
           <div className="flex gap-2">

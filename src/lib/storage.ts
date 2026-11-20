@@ -8,7 +8,7 @@ export function validatePhoto(file: unknown): file is File {
   return file instanceof File && file.size > 0 && file.size <= MAX_BYTES && file.type.startsWith("image/");
 }
 
-export async function uploadPhoto(requestId: string, kind: "items" | "dropoff", file: File) {
+export async function uploadPhoto(requestId: string, kind: "receipt" | "items" | "dropoff", file: File) {
   const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
   const path = `${requestId}/${kind}-${Date.now()}.${ext}`;
   const { error } = await admin().storage.from(BUCKET).upload(path, file, { contentType: file.type, upsert: true });

@@ -42,13 +42,11 @@ const toggle = (list: string[], v: string) => (list.includes(v) ? list.filter((x
 export function Feed({
   requests,
   homeZones,
-  budgetLeftCents,
 }: {
+  /** Already limited to the runner's max per order. */
   requests: DartRequest[];
   /** "Delivering to" starts on the runner's own dorm. */
   homeZones: string[];
-  /** What's left of the runner's budget, or null before runner setup. */
-  budgetLeftCents: number | null;
 }) {
   // Nothing ticked in a row means no filter on it.
   const savedStores = useClientValue(readStores, null);
@@ -108,9 +106,7 @@ export function Feed({
             {requests.length > 0 ? "Tick more stores or areas to see more." : "New requests show up here instantly."}
           </EmptyState>
         ) : (
-          shown.map((r) => (
-            <FeedCard key={r.id} req={r} overBudget={budgetLeftCents != null && r.max_price_cents > budgetLeftCents} />
-          ))
+          shown.map((r) => <FeedCard key={r.id} req={r} />)
         )}
       </div>
     </div>
@@ -155,7 +151,7 @@ function CheckChip({ checked, children, onClick }: { checked: boolean; children:
   );
 }
 
-function FeedCard({ req, overBudget }: { req: DartRequest; overBudget: boolean }) {
+function FeedCard({ req }: { req: DartRequest }) {
   const store = getStore(req.store);
   return (
     <Link href={`/orders/${req.id}`} className="block">
@@ -166,16 +162,16 @@ function FeedCard({ req, overBudget }: { req: DartRequest; overBudget: boolean }
             <div className="flex items-start justify-between gap-2">
               <p className="line-clamp-2 font-bold leading-snug text-ink">{req.items}</p>
               <span className="shrink-0 rounded-full bg-lime-300 px-2.5 py-1 text-xs font-extrabold text-lime-900">
-                +{money(req.runner_fee_cents)}
+                ~{money(req.runner_fee_cents)}
               </span>
             </div>
             <p className="mt-1.5 text-sm text-muted">
               {store?.name} · {store?.where} → <span className="font-semibold text-ink">{req.dropoff_zone}</span>
             </p>
             <p className="mt-1 text-xs text-muted">
-              Up to {money(req.max_price_cents)} on the Dart card · closes in <TimeLeft iso={req.expires_at} />
+              You front up to {money(req.max_price_cents)}
+              {req.distance_miles != null ? ` · ~${req.distance_miles} mi` : ""} · closes in <TimeLeft iso={req.expires_at} />
             </p>
-            {overBudget ? <p className="mt-1.5 text-xs font-semibold text-warn-ink">Over what&apos;s left of your budget</p> : null}
           </div>
         </div>
       </Card>

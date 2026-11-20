@@ -6,10 +6,9 @@ import { RequestRow } from "@/components/request-row";
 import { RunnerBudget } from "@/components/runner-budget";
 import { Card, Notice, PageSkeleton } from "@/components/ui";
 import { getMember, isRunnerReady } from "@/lib/auth";
-import { DELIVERY_WINDOW_MINUTES, FEES, LAUNCH_ZONES, runnerBudgetCents } from "@/lib/config";
-import { money } from "@/lib/format";
+import { DELIVERY_WINDOW_MINUTES, LAUNCH_ZONES, runnerBudgetCents } from "@/lib/config";
 import { runMaintenance } from "@/lib/orders";
-import type { CardLoad, DartRequest } from "@/lib/types";
+import type { DartRequest } from "@/lib/types";
 import { Feed } from "./feed";
 
 export const metadata = { title: "Find orders · Dart" };
@@ -26,7 +25,7 @@ async function Run() {
   const { supabase, userId, profile } = await getMember();
   await runMaintenance();
 
-  const [{ data: open }, { data: mine }, { data: loads }] = await Promise.all([
+  const [{ data: open }, { data: mine }] = await Promise.all([
     supabase
       .from("requests")
       .select("*")
@@ -42,11 +41,12 @@ async function Run() {
       .eq("runner_id", userId)
       .in("status", ["claimed", "purchased", "delivering", "dropped_off"])
       .returns<DartRequest[]>(),
-    supabase.from("card_loads").select("amount_cents").eq("runner_id", userId).eq("status", "loaded").returns<Pick<CardLoad, "amount_cents">[]>(),
   ]);
   const ready = isRunnerReady(profile);
   const budgetCents = runnerBudgetCents(profile);
-  const loadedCents = (loads ?? []).reduce((sum, l) => sum + l.amount_cents, 0);
+  // Runners only see orders they're willing to front.
+  const all = open ?? [];
+  const visible = ready ? all.filter((r) => r.max_price_cents <= budgetCents) : all;
   // "Delivering to" starts on the runner's own dorm, when it's in the launch area.
   const homeZones = profile.dorm && LAUNCH_ZONES.includes(profile.dorm) ? [profile.dorm] : [];
 
@@ -55,8 +55,8 @@ async function Run() {
       <RealtimeRefresh channel={`feed-${userId}`} />
       <h1 className="text-2xl font-extrabold tracking-tight">Going to the store?</h1>
       <p className="mt-1 text-muted">
-        Pick up orders on a trip you&apos;re already making, before you leave or once you&apos;re there. Earn{" "}
-        {money(FEES.runnerFeeCents)} each.
+        Pick up orders on a trip you&apos;re already making, before you leave or once you&apos;re there. Buy them, and get paid back
+        plus a fee by Venmo or Zelle at handoff.
       </p>
       <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-ink">
         <Timer className="size-4 text-action" /> {DELIVERY_WINDOW_MINUTES} min to buy and deliver, counted from when you claim.
@@ -71,14 +71,14 @@ async function Run() {
           <Card className="flex items-center gap-3.5 border-action/20 bg-action-soft p-4">
             <BadgeCheck className="size-7 shrink-0 text-action" />
             <div className="flex-1">
-              <p className="font-bold text-action-ink">Set up to run · 2 min</p>
-              <p className="text-sm text-action-ink/80">Learn how the Dart card works, verify your ID and get your card.</p>
+              <p className="font-bold text-action-ink">Set up to run · 1 min</p>
+              <p className="text-sm text-action-ink/80">The rules, how you get paid, and the most you&apos;ll front per order.</p>
             </div>
             <ArrowRight className="size-5 text-action" />
           </Card>
         </Link>
       ) : (
-        <RunnerBudget budgetCents={budgetCents} loadedCents={loadedCents} />
+        <RunnerBudget budgetCents={budgetCents} hiddenCount={all.length - visible.length} />
       )}
 
       {mine && mine.length > 0 ? (
@@ -90,7 +90,7 @@ async function Run() {
         </div>
       ) : null}
 
-      <Feed requests={open ?? []} homeZones={homeZones} budgetLeftCents={ready ? Math.max(0, budgetCents - loadedCents) : null} />
+      <Feed requests={visible} homeZones={homeZones} />
     </div>
   );
 }

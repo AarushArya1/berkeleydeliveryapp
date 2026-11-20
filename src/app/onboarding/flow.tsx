@@ -8,11 +8,14 @@ import { Check, Smartphone } from "lucide-react";
 import { acceptTerms, markHomeScreenDone, saveProfile } from "@/app/actions";
 import { InstallGuide, useInstallState } from "@/components/install-guide";
 import { Logo } from "@/components/logo";
+import { PayAccountFields } from "@/components/pay-accounts";
 import { PushButton } from "@/components/push-button";
 import { Button, Card, Checkbox, ErrorText, Input, Label, Select } from "@/components/ui";
-import { DORMS } from "@/lib/config";
+import { DORMS, UNPAID_BAN_HOURS } from "@/lib/config";
+import { REPORTABLE } from "@/lib/legal";
 
 type Done = { profile: boolean; homeScreen: boolean; terms: boolean };
+type Initial = { fullName: string; dorm: string; phone: string; venmo: string; zelle: string };
 const STEPS = ["About you", "Notifications", "Terms"] as const;
 
 export function OnboardingFlow({
@@ -21,7 +24,7 @@ export function OnboardingFlow({
   done,
 }: {
   email: string;
-  initial: { fullName: string; dorm: string; phone: string };
+  initial: Initial;
   done: Done;
 }) {
   const step = !done.profile ? 0 : !done.homeScreen ? 1 : 2;
@@ -51,10 +54,12 @@ export function OnboardingFlow({
   );
 }
 
-function ProfileStep({ initial }: { initial: { fullName: string; dorm: string; phone: string } }) {
+function ProfileStep({ initial }: { initial: Initial }) {
   const [fullName, setFullName] = useState(initial.fullName);
   const [dorm, setDorm] = useState(initial.dorm);
   const [phone, setPhone] = useState(initial.phone);
+  const [venmo, setVenmo] = useState(initial.venmo);
+  const [zelle, setZelle] = useState(initial.zelle);
   const [smsConsent, setSmsConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -66,7 +71,7 @@ function ProfileStep({ initial }: { initial: { fullName: string; dorm: string; p
         e.preventDefault();
         setError(null);
         start(async () => {
-          const r = await saveProfile({ fullName, dorm, phone, smsConsent });
+          const r = await saveProfile({ fullName, dorm, phone, venmo, zelle, smsConsent });
           if (!r.ok) setError(r.error);
         });
       }}
@@ -104,6 +109,7 @@ function ProfileStep({ initial }: { initial: { fullName: string; dorm: string; p
           placeholder="(510) 555-0123"
         />
       </div>
+      <PayAccountFields venmo={venmo} zelle={zelle} onVenmo={setVenmo} onZelle={setZelle} />
       <Checkbox
         checked={smsConsent}
         onChange={(e) => setSmsConsent(e.target.checked)}
@@ -114,7 +120,7 @@ function ProfileStep({ initial }: { initial: { fullName: string; dorm: string; p
         }
       />
       <ErrorText>{error}</ErrorText>
-      <Button type="submit" full size="lg" loading={pending} disabled={!fullName || !dorm || !phone || !smsConsent}>
+      <Button type="submit" full size="lg" loading={pending} disabled={!fullName || !dorm || !phone || !(venmo.trim() || zelle.trim()) || !smsConsent}>
         Continue
       </Button>
     </form>
@@ -180,20 +186,23 @@ function TermsStep() {
     <div className="space-y-5">
       <div>
         <h1 className="text-3xl font-extrabold tracking-tight">The ground rules</h1>
-        <p className="mt-2 text-muted">Three things to know:</p>
+        <p className="mt-2 text-muted">Runners pay for your items with their own money. So:</p>
       </div>
       <Card className="divide-y divide-line">
         {[
-          ["Pay only what it costs", "Posting holds your card. You're charged the receipt total plus fees once it's bought. Cancel free until then."],
-          ["Show up for handoff", "Give your runner your 4-digit code. Repeat no-shows are banned."],
-          ["No restricted items", "No alcohol, tobacco, vapes, prescription drugs or anything age-restricted."],
-        ].map(([t, d]) => (
+          ["Pay at handoff, then give your code", "Receipt total + runner fee by Venmo or Zelle, then your 4-digit code.", `Don't pay: suspended right away, banned after ${UNPAID_BAN_HOURS} hours.`],
+          ["Cancel free until it's bought", "After your runner buys it, you owe the full amount.", "Cancel and don't pay: same as not paying."],
+          ["Show up for handoff", "Not there? Your runner leaves it at your spot, and you still pay.", null],
+          ["No restricted items", "No alcohol, tobacco, vapes, prescription drugs or anything age-restricted.", null],
+        ].map(([t, d, c]) => (
           <div key={t} className="p-4">
             <p className="font-bold">{t}</p>
             <p className="mt-0.5 text-sm text-muted">{d}</p>
+            {c ? <p className="mt-1 text-sm font-semibold text-danger">{c}</p> : null}
           </div>
         ))}
       </Card>
+      <p className="rounded-2xl bg-warn-soft p-4 text-sm font-medium leading-relaxed text-warn-ink">{REPORTABLE}</p>
       <Checkbox
         checked={agreed}
         onChange={(e) => setAgreed(e.target.checked)}

@@ -5,7 +5,7 @@ import { Logo } from "@/components/logo";
 import { StatusPill, storeLabel } from "@/components/order-bits";
 import { Card, PageSkeleton } from "@/components/ui";
 import { getMember } from "@/lib/auth";
-import { FEES, RESERVE_SHARE } from "@/lib/config";
+import { owesRunner } from "@/lib/pay";
 import { displayName, money, shortDate } from "@/lib/format";
 import { runMaintenance } from "@/lib/orders";
 import { admin } from "@/lib/supabase/admin";
@@ -55,18 +55,13 @@ async function Dashboard() {
     { data: profData },
     { data: disputeData },
     { data: notes },
-    { data: ledger },
     { data: timeouts },
-    { count: claimCount },
   ] = await Promise.all([
     db.from("requests").select("*").order("created_at", { ascending: false }).limit(1000),
     db.from("profiles").select("*").order("created_at", { ascending: false }).limit(500),
     db.from("disputes").select("*").order("created_at", { ascending: false }).limit(50),
     db.from("notifications").select("*").order("created_at", { ascending: false }).limit(40),
-    db.from("ledger").select("kind, amount_cents, created_at"),
     db.from("delivery_timeouts").select("stage, runner_id"),
-    // Every claim loads the runner's Dart card once, so loads = total claims (including re-claims).
-    db.from("card_loads").select("id", { count: "exact", head: true }),
   ]);
   const unboughtTimeouts = (timeouts ?? []).filter((t) => t.stage === "before_purchase").length;
   const lateTimeouts = (timeouts ?? []).filter((t) => t.stage === "after_purchase").length;
@@ -93,20 +88,16 @@ async function Dashboard() {
   for (const r of completed) if (r.runner_id) byRunner.set(r.runner_id, (byRunner.get(r.runner_id) ?? 0) + 1);
   const weekAgo = daysAgo(7);
 
-  const sum = (kind: string) => (ledger ?? []).filter((l) => l.kind === kind).reduce((s, l) => s + l.amount_cents, 0);
-  const reserve = sum("reserve_in") - sum("reserve_out");
-  const purchasesByDay = new Map<string, number>();
-  for (const r of requests) {
-    if (!r.purchased_at || r.purchase_cents == null) continue;
-    const day = r.purchased_at.slice(0, 10);
-    purchasesByDay.set(day, (purchasesByDay.get(day) ?? 0) + r.purchase_cents);
-  }
-  const busiestDay = Math.max(0, ...purchasesByDay.values());
+  const owed = requests.filter(owesRunner);
+  const fees = completed.map((r) => r.runner_fee_cents);
+  const paidBy = (m: string) => completed.filter((r) => r.paid_method === m).length;
 
   const unclaimed = requests.filter((r) => r.status === "open" && new Date(r.expires_at) > new Date());
   const inProgress = requests.filter((r) => ["claimed", "purchased", "delivering", "dropped_off"].includes(r.status));
   const openDisputes = disputes.filter((d) => d.status === "open");
   const reqById = new Map(requests.map((r) => [r.id, r]));
+  // A timed-out claim resets the order, so claims = orders claimed now + times a claim ran out.
+  const claimCount = everClaimed.length + unboughtTimeouts;
   const disputePhotos = await Promise.all(
     openDisputes.map(async (d) => {
       const r = reqById.get(d.request_id);
@@ -126,9 +117,8 @@ async function Dashboard() {
     ],
     ["Requesters", String(byRequester.size), `${[...byRequester.values()].filter((n) => n > 1).length} came back`],
     ["Runners", String(byRunner.size), `${[...byRunner.values()].filter((n) => n > 1).length} ran 2+ times`],
-    ["Runner fee ($x)", money(FEES.runnerFeeCents), `Dart fee ($y) ${money(FEES.dartFeeCents)}`],
-    ["Reserve", money(reserve), `${Math.round(RESERVE_SHARE * 100)}% of each Dart fee`],
-    ["Float needed", money(busiestDay), "busiest day of card purchases"],
+    ["Avg runner fee", fees.length ? money(Math.round(fees.reduce((a, b) => a + b, 0) / fees.length)) : "—", `${paidBy("venmo")} Venmo · ${paidBy("zelle")} Zelle`],
+    ["Owed to runners", money(owed.reduce((a, r) => a + (r.charged_cents ?? 0), 0)), `${owed.length} order${owed.length === 1 ? "" : "s"} not paid back yet`],
   ];
 
   return (
@@ -160,7 +150,7 @@ async function Dashboard() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-lg font-extrabold">Open disputes</h2>
+        <h2 className="mb-3 text-lg font-extrabold">Reports: unpaid &amp; problems</h2>
         {openDisputes.length === 0 ? (
           <p className="text-sm text-muted">None.</p>
         ) : (
@@ -184,8 +174,9 @@ async function Dashboard() {
                   <p className="text-sm">{r.items}</p>
                   {d.details ? <p className="rounded-xl bg-lime-25 p-3 text-sm text-muted">&ldquo;{d.details}&rdquo;</p> : null}
                   <p className="text-xs text-muted">
-                    Charged {money(r.charged_cents)} · bought {money(r.purchase_cents)} at {r.purchase_merchant ?? "—"} · runner fee{" "}
-                    {r.payout_status}
+                    {d.kind === "unpaid" ? "Runner says they weren't paid · " : ""}
+                    Owed {money(r.charged_cents)} · receipt {money(r.purchase_cents)} · fee {money(r.runner_fee_cents)}
+                    {r.paid_reported_at ? ` · requester says paid on ${r.paid_method}` : " · requester hasn't said they paid"}
                   </p>
                   <div className="flex gap-2">
                     {[disputePhotos[i].items, disputePhotos[i].dropoff].map((src, j) =>
@@ -193,7 +184,7 @@ async function Dashboard() {
                       src ? <img key={j} src={src} alt="" className="h-28 w-28 rounded-xl object-cover" /> : null,
                     )}
                   </div>
-                  <DisputeResolver disputeId={d.id} chargedCents={r.charged_cents ?? 0} />
+                  <DisputeResolver disputeId={d.id} unpaid={d.kind === "unpaid"} />
                 </Card>
               );
             })}
@@ -210,6 +201,7 @@ async function Dashboard() {
                 <th className="p-3">Name</th>
                 <th className="p-3">Dorm</th>
                 <th className="p-3">Runner</th>
+                <th className="p-3">Venmo / Zelle</th>
                 <th className="p-3">No-shows</th>
                 <th className="p-3">Status</th>
                 <th className="p-3" />
@@ -223,7 +215,8 @@ async function Dashboard() {
                     <p className="text-xs text-muted">{p.email}</p>
                   </td>
                   <td className="p-3">{p.dorm ?? "—"}</td>
-                  <td className="p-3">{p.payouts_ready_at ? "Ready" : "—"}</td>
+                  <td className="p-3">{p.runner_terms_accepted_at ? "Yes" : "—"}</td>
+                  <td className="p-3 text-xs">{[p.venmo_username && `@${p.venmo_username}`, p.zelle_contact].filter(Boolean).join(" · ") || "—"}</td>
                   <td className="p-3">{p.no_show_count}</td>
                   <td className="p-3 capitalize">{p.status}</td>
                   <td className="p-3">{p.is_admin ? <span className="text-xs text-muted">admin</span> : <UserControls userId={p.id} status={p.status} />}</td>

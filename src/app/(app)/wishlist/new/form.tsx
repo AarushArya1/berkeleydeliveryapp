@@ -2,18 +2,27 @@
 
 import { useMemo, useState, useTransition } from "react";
 import clsx from "clsx";
-import { ChevronDown, CreditCard, Lock, Minus, Plus } from "lucide-react";
+import { ChevronDown, HandCoins, Lock, Minus, Plus } from "lucide-react";
 import { postRequest } from "@/app/actions";
 import { PriceBreakdown } from "@/components/order-bits";
-import { Button, Card, Checkbox, Chip, ErrorText, Input, Label, Notice, Placeholder, Textarea } from "@/components/ui";
-import { DURATIONS, LAUNCH_ZONES, LIMITS, STORES, findRestricted } from "@/lib/config";
-import { breakdown } from "@/lib/fees";
+import { Button, Card, Checkbox, Chip, ErrorText, Input, Label, Notice, Textarea } from "@/components/ui";
+import { DURATIONS, LAUNCH_ZONES, LIMITS, PAY_METHOD_LABEL, STORES, findRestricted, type PayMethod } from "@/lib/config";
+import { quote } from "@/lib/fees";
 import { money } from "@/lib/format";
 
 const MIN = LIMITS.minOrderCents / 100;
 const MAX = LIMITS.launchMaxCents / 100;
 
-export function NewRequestForm({ defaultZone, defaultSpot }: { defaultZone: string; defaultSpot: string }) {
+export function NewRequestForm({
+  defaultZone,
+  defaultSpot,
+  payMethods,
+}: {
+  defaultZone: string;
+  defaultSpot: string;
+  /** How this requester can pay (from their profile). */
+  payMethods: PayMethod[];
+}) {
   const [items, setItems] = useState("");
   const [notes, setNotes] = useState("");
   const [showNotes, setShowNotes] = useState(false);
@@ -23,13 +32,15 @@ export function NewRequestForm({ defaultZone, defaultSpot }: { defaultZone: stri
   const [spot, setSpot] = useState(defaultSpot);
   const [hours, setHours] = useState(3);
   const [ack, setAck] = useState(false);
+  const [payAck, setPayAck] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
   const restricted = useMemo(() => findRestricted(`${items}\n${notes}`), [items, notes]);
-  const hold = breakdown(maxDollars * 100);
-  const ready = items.trim().length >= 3 && store && zone && spot.trim().length >= 2 && ack && !restricted;
+  const fee = store && zone ? quote(maxDollars * 100, store, zone) : null;
+  const ready = items.trim().length >= 3 && store && zone && spot.trim().length >= 2 && ack && payAck && !restricted;
+  const methods = payMethods.map((m) => PAY_METHOD_LABEL[m]).join(" or ");
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -44,6 +55,7 @@ export function NewRequestForm({ defaultZone, defaultSpot }: { defaultZone: stri
         maxPriceCents: maxDollars * 100,
         durationHours: hours,
         restrictedAck: ack,
+        payAck,
       });
       if (r && !r.ok) setError(r.error);
     });
@@ -52,7 +64,7 @@ export function NewRequestForm({ defaultZone, defaultSpot }: { defaultZone: stri
   return (
     <form onSubmit={submit} className="px-4 pb-40 pt-5">
       <h1 className="text-2xl font-extrabold tracking-tight">Add to your shopping list</h1>
-      <p className="mt-1 text-muted">Takes 20 seconds. You&apos;re only charged what it actually costs.</p>
+      <p className="mt-1 text-muted">Takes 20 seconds. Pay your runner what it cost, plus their fee, when it arrives.</p>
 
       <div className="mt-6 space-y-7">
         <section>
@@ -139,7 +151,8 @@ export function NewRequestForm({ defaultZone, defaultSpot }: { defaultZone: stri
               aria-label="Max item price"
             />
             <p className="mt-2 text-xs leading-relaxed text-muted">
-              The most your runner can spend on items. You pay the actual receipt total, not this.
+              The most your runner can spend on items. You pay back the actual receipt total, not this. Higher maxes pay your runner a
+              little more, since they front the money.
             </p>
           </Card>
         </section>
@@ -174,16 +187,28 @@ export function NewRequestForm({ defaultZone, defaultSpot }: { defaultZone: stri
               </Chip>
             ))}
           </div>
-          <p className="mt-2 text-xs text-muted">If nobody picks it up by then, the hold is released. You&apos;re never charged.</p>
+          <p className="mt-2 text-xs text-muted">If nobody picks it up by then, it just closes. You don&apos;t owe anything.</p>
         </section>
 
         <section className="space-y-4">
-          <div className="flex items-center justify-between rounded-2xl border border-line bg-white px-4 py-3">
-            <span className="flex items-center gap-2.5 text-sm font-semibold">
-              <CreditCard className="size-5 text-muted" /> Test card •••• 4242
-            </span>
-            <Placeholder>Stripe placeholder</Placeholder>
+          <div className="flex items-start gap-3 rounded-2xl border border-line bg-white px-4 py-3">
+            <HandCoins className="mt-0.5 size-5 shrink-0 text-action" />
+            <p className="text-sm leading-relaxed">
+              <b>Pay at handoff with {methods}.</b> Your runner buys it with their own money. When you get your items, you pay them the
+              receipt total plus the runner fee{fee ? ` (about ${money(fee.runnerFeeCents)})` : ""}. Once they upload the receipt, you&apos;re told the
+              exact amount.
+            </p>
           </div>
+          <Checkbox
+            checked={payAck}
+            onChange={(e) => setPayAck(e.target.checked)}
+            label={
+              <>
+                I&apos;ll pay my runner at handoff. <span className="text-muted">Not paying, or cancelling after it&apos;s bought without
+                paying, gets my account banned.</span>
+              </>
+            }
+          />
           <Checkbox
             checked={ack}
             onChange={(e) => setAck(e.target.checked)}
@@ -196,17 +221,23 @@ export function NewRequestForm({ defaultZone, defaultSpot }: { defaultZone: stri
       {/* Sticky total + post */}
       <div className="fixed inset-x-0 bottom-[calc(max(env(safe-area-inset-bottom),0.5rem)+60px)] z-20 px-3">
         <Card className="mx-auto max-w-md p-3 shadow-[0_-4px_30px_rgb(22_32_13/0.08)]">
-          {showBreakdown ? (
+          {showBreakdown && fee ? (
             <div className="animate-rise px-1 pb-3 pt-1">
-              <PriceBreakdown itemsCents={maxDollars * 100} itemsLabel="Items (max)" totalLabel="Max hold" />
+              <PriceBreakdown itemsCents={maxDollars * 100} runnerFeeCents={fee.runnerFeeCents} miles={fee.miles} estimate itemsLabel="Items (at most)" totalLabel="At most, at handoff" />
             </div>
           ) : null}
           <div className="flex items-center gap-3">
-            <button type="button" onClick={() => setShowBreakdown((v) => !v)} className="min-w-0 flex-1 pl-1 text-left">
+            <button type="button" onClick={() => setShowBreakdown((v) => !v)} disabled={!fee} className="min-w-0 flex-1 pl-1 text-left">
               <p className="flex items-center gap-1 text-xs font-semibold text-muted">
-                Hold up to <ChevronDown className={clsx("size-3.5 transition-transform", showBreakdown && "rotate-180")} />
+                {fee ? (
+                  <>
+                    Runner fee ~{money(fee.runnerFeeCents)} <ChevronDown className={clsx("size-3.5 transition-transform", showBreakdown && "rotate-180")} />
+                  </>
+                ) : (
+                  "Pick a store to see the fee"
+                )}
               </p>
-              <p className="text-xl font-extrabold tabular-nums">{money(hold.totalCents)}</p>
+              <p className="text-xl font-extrabold tabular-nums">{fee ? `≤ ${money(maxDollars * 100 + fee.runnerFeeCents)}` : "—"}</p>
             </button>
             <Button type="submit" size="lg" loading={pending} disabled={!ready} className="px-7">
               Post request
@@ -216,8 +247,8 @@ export function NewRequestForm({ defaultZone, defaultSpot }: { defaultZone: stri
       </div>
 
       <Notice className="mt-6">
-        Posting places a hold of up to {money(hold.totalCents)}. When your runner buys the items you&apos;re charged the receipt total
-        plus fees, and the rest is released.
+        The runner fee is set by Dart from how far your runner carries it ({fee ? `about ${fee.miles} mi` : "store to your dorm"}) and the
+        item price. The amount shown is an estimate from your max; the final fee uses the real receipt total. Dart takes no cut. Cancel free until your items are bought; after that you owe the full amount.
       </Notice>
     </form>
   );

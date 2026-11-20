@@ -5,10 +5,10 @@ import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/auth";
 import { admin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { DORMS, RUNNER_BUDGET } from "@/lib/config";
-import { normalizePhone } from "@/lib/format";
+import { DORMS, RUNNER_BUDGET, type PayMethod } from "@/lib/config";
+import { dollarsToCents, normalizePhone } from "@/lib/format";
 import * as orders from "@/lib/orders";
-import { payments } from "@/lib/payments";
+import { normalizeVenmo, normalizeZelle } from "@/lib/pay";
 import type { ActionResult } from "@/lib/types";
 
 // Every action re-reads the session itself; nothing trusts the client.
@@ -28,18 +28,46 @@ function done<T extends ActionResult<unknown>>(result: T): T {
 // Sign-up
 // ---------------------------------------------------------------------------
 
-export async function saveProfile(input: { fullName: string; dorm: string; phone: string; smsConsent: boolean }): Promise<ActionResult> {
+/** Venmo / Zelle: at least one, so runners can be paid back (and requesters can pay). */
+function parsePayAccounts(input: { venmo: string; zelle: string }) {
+  const venmo = input.venmo.trim() ? normalizeVenmo(input.venmo) : null;
+  const zelle = input.zelle.trim() ? normalizeZelle(input.zelle) : null;
+  if (input.venmo.trim() && !venmo) return { error: "That doesn't look like a Venmo username" } as const;
+  if (input.zelle.trim() && !zelle) return { error: "Enter the phone number or email your Zelle uses" } as const;
+  if (!venmo && !zelle) return { error: "Add your Venmo or Zelle" } as const;
+  return { venmo_username: venmo, zelle_contact: zelle } as const;
+}
+
+export async function saveProfile(input: {
+  fullName: string;
+  dorm: string;
+  phone: string;
+  venmo: string;
+  zelle: string;
+  smsConsent: boolean;
+}): Promise<ActionResult> {
   const userId = await requireUser();
   const fullName = input.fullName.trim().replace(/\s+/g, " ");
   if (fullName.length < 2 || fullName.length > 60) return { ok: false, error: "Enter your name" };
   if (!DORMS.includes(input.dorm)) return { ok: false, error: "Pick your dorm" };
   const phone = normalizePhone(input.phone);
   if (!phone) return { ok: false, error: "Enter a 10-digit US phone number" };
+  const pay = parsePayAccounts(input);
+  if ("error" in pay) return { ok: false, error: pay.error! };
   if (!input.smsConsent) return { ok: false, error: "Agree to order texts to continue" };
   const { error } = await admin()
     .from("profiles")
-    .update({ full_name: fullName, dorm: input.dorm, phone, sms_consent_at: new Date().toISOString() })
+    .update({ full_name: fullName, dorm: input.dorm, phone, ...pay, sms_consent_at: new Date().toISOString() })
     .eq("id", userId);
+  if (error) return { ok: false, error: "Couldn't save. Try again." };
+  return done({ ok: true });
+}
+
+export async function savePayAccounts(input: { venmo: string; zelle: string }): Promise<ActionResult> {
+  const userId = await requireUser();
+  const pay = parsePayAccounts(input);
+  if ("error" in pay) return { ok: false, error: pay.error! };
+  const { error } = await admin().from("profiles").update(pay).eq("id", userId);
   if (error) return { ok: false, error: "Couldn't save. Try again." };
   return done({ ok: true });
 }
@@ -72,35 +100,11 @@ export async function acceptRunnerTerms(): Promise<ActionResult> {
   return done({ ok: true });
 }
 
-/** PAYMENTS PLACEHOLDER for Stripe Connect Express hosted onboarding. */
-export async function completePayoutSetup(): Promise<ActionResult> {
-  const userId = await requireUser();
-  await admin().from("profiles").update({ payouts_ready_at: new Date().toISOString() }).eq("id", userId);
-  return done({ ok: true });
-}
-
-/**
- * PAYMENTS PLACEHOLDER for creating the runner's Stripe Issuing cardholder +
- * virtual card. One card per runner, made at the end of runner setup.
- */
 function validBudget(cents: number) {
   return Number.isInteger(cents) && cents >= RUNNER_BUDGET.minCents && cents <= RUNNER_BUDGET.maxCents && cents % RUNNER_BUDGET.stepCents === 0;
 }
 
-export async function createDartCard(budgetCents: number): Promise<ActionResult> {
-  const userId = await requireUser();
-  if (!validBudget(budgetCents)) return { ok: false, error: "Pick a budget" };
-  const db = admin();
-  const { data: profile } = await db.from("profiles").select("runner_terms_accepted_at, payouts_ready_at, status").eq("id", userId).single();
-  if (!profile?.runner_terms_accepted_at || !profile.payouts_ready_at) return { ok: false, error: "Finish the steps above first" };
-  if (profile.status !== "active") return { ok: false, error: "Your account isn't active" };
-  const card = await payments.issueRunnerCard(userId);
-  await db.from("profiles").update({ runner_budget_cents: budgetCents }).eq("id", userId);
-  await db.from("profiles").update({ card_issued_at: card.created_at }).eq("id", userId).is("card_issued_at", null);
-  return done({ ok: true });
-}
-
-/** The most the runner is willing to have on their Dart card at once. */
+/** The most the runner will pay up front for one order. They only see orders at or under it. */
 export async function setRunnerBudget(budgetCents: number): Promise<ActionResult> {
   const userId = await requireUser();
   if (!validBudget(budgetCents)) return { ok: false, error: "Pick a budget" };
@@ -138,21 +142,23 @@ export async function releaseClaim(requestId: string) {
   redirect("/run");
 }
 
-/** PAYMENTS PLACEHOLDER: a simulated tap only knows the store and amount, like a real one. */
-export async function cardTap(amountCents: number, merchantStoreId: string) {
-  const userId = await requireUser();
-  return done(await orders.simulateCardTap(userId, amountCents, merchantStoreId));
-}
-
-/** "I'm paying for this one": points the next tap at this order (two orders at one store). */
-export async function armForPayment(requestId: string) {
-  const userId = await requireUser();
-  return done(await orders.armLoad(userId, requestId));
-}
-
 export async function markPurchased(formData: FormData) {
   const userId = await requireUser();
-  return done(await orders.markPurchased(userId, String(formData.get("requestId")), formData.get("photo")));
+  const items = formData.get("itemsPhoto");
+  return done(
+    await orders.markPurchased(
+      userId,
+      String(formData.get("requestId")),
+      formData.get("receipt"),
+      items instanceof File && items.size > 0 ? items : null,
+      dollarsToCents(String(formData.get("total") ?? "")),
+    ),
+  );
+}
+
+export async function confirmReceipt(requestId: string) {
+  const userId = await requireUser();
+  return done(await orders.confirmReceipt(userId, requestId));
 }
 
 export async function enterCode(requestId: string, code: string) {
@@ -168,9 +174,19 @@ export async function submitDropoff(formData: FormData) {
   return done(await orders.submitDropoff(userId, String(formData.get("requestId")), formData.get("photo"), coords));
 }
 
-export async function confirmReceived(requestId: string) {
+export async function reportPaid(requestId: string, method: PayMethod) {
   const userId = await requireUser();
-  return done(await orders.confirmReceived(userId, requestId));
+  return done(await orders.reportPaid(userId, requestId, method));
+}
+
+export async function confirmPaid(requestId: string) {
+  const userId = await requireUser();
+  return done(await orders.confirmPaid(userId, requestId));
+}
+
+export async function reportUnpaid(requestId: string, details: string) {
+  const userId = await requireUser();
+  return done(await orders.reportUnpaid(userId, requestId, details));
 }
 
 export async function cancelRequest(requestId: string) {
@@ -194,7 +210,7 @@ export async function rate(requestId: string, stars: number, comment: string) {
 
 export async function resolveDispute(
   disputeId: string,
-  input: { outcome: "refund" | "reject"; refundCents: number; payRunner: boolean; suspendRunner: boolean; note: string },
+  input: { outcome: "settled" | "cancel"; banRequester: boolean; suspendRunner: boolean; note: string },
 ) {
   const userId = await requireUser();
   return done(await orders.resolveDispute(userId, disputeId, input));
@@ -203,11 +219,6 @@ export async function resolveDispute(
 export async function setUserStatus(targetId: string, status: "active" | "suspended" | "banned") {
   const userId = await requireUser();
   return done(await orders.setUserStatus(userId, targetId, status));
-}
-
-export async function freezeRunnerCard(runnerId: string) {
-  const userId = await requireUser();
-  return done(await orders.freezeRunnerCard(userId, runnerId));
 }
 
 export async function runMaintenanceNow(): Promise<ActionResult> {

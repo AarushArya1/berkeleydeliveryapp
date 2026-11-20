@@ -4,7 +4,7 @@ import { ArrowRight, Bike, ShoppingBasket } from "lucide-react";
 import { InstallGuide, useInstallState } from "@/components/install-guide";
 import { Logo } from "@/components/logo";
 import { ButtonLink, Card } from "@/components/ui";
-import { FEES } from "@/lib/config";
+import { RUNNER_FEE } from "@/lib/config";
 import { money } from "@/lib/format";
 
 export function Welcome() {
@@ -32,12 +32,12 @@ export function Welcome() {
         <div className="mt-8 grid grid-cols-2 gap-3">
           <Card className="p-4">
             <ShoppingBasket className="size-6 text-action" />
-            <p className="mt-3 font-bold leading-snug">Only pay what it costs</p>
-            <p className="mt-1 text-sm text-muted">Your card is held, then charged the real receipt total.</p>
+            <p className="mt-3 font-bold leading-snug">Pay what it costs</p>
+            <p className="mt-1 text-sm text-muted">The receipt total plus a small runner fee, by Venmo or Zelle at handoff.</p>
           </Card>
           <Card className="p-4">
             <Bike className="size-6 text-action" />
-            <p className="mt-3 font-bold leading-snug">Earn {money(FEES.runnerFeeCents)} a run</p>
+            <p className="mt-3 font-bold leading-snug">Earn {money(RUNNER_FEE.minCents)}–{money(RUNNER_FEE.maxCents)} a run</p>
             <p className="mt-1 text-sm text-muted">Grab orders on trips you&apos;re already making.</p>
           </Card>
         </div>

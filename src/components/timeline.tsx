@@ -2,7 +2,7 @@ import clsx from "clsx";
 import { Check } from "lucide-react";
 import type { RequestStatus } from "@/lib/types";
 
-const STEPS = ["Posted", "Claimed", "Bought", "On the way", "Delivered"];
+const STEPS = ["Posted", "Claimed", "Bought", "Handoff", "Paid"];
 
 function stepIndex(status: RequestStatus, before: RequestStatus | null): number {
   switch (status) {

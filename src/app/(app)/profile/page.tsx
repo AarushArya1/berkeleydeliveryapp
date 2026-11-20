@@ -2,10 +2,12 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { BadgeCheck, ChevronRight, FileText, LayoutDashboard, Star } from "lucide-react";
 import { signOut } from "@/app/actions";
+import { PayAccountsEditor } from "@/components/pay-accounts";
 import { PushButton } from "@/components/push-button";
 import { Button, Card, PageSkeleton, SectionTitle } from "@/components/ui";
 import { getMember, isRunnerReady } from "@/lib/auth";
 import { ratingFor } from "@/lib/orders";
+import { formatZelle } from "@/lib/pay";
 
 export const metadata = { title: "Profile · Dart" };
 
@@ -60,6 +62,9 @@ async function Profile() {
           </span>
         </Link>
       </Card>
+
+      <SectionTitle>Venmo &amp; Zelle</SectionTitle>
+      <PayAccountsEditor initialVenmo={profile.venmo_username ?? ""} initialZelle={profile.zelle_contact ? formatZelle(profile.zelle_contact) : ""} />
 
       <SectionTitle>Notifications</SectionTitle>
       <Card className="p-4">

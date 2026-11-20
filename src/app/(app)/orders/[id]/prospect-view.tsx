@@ -1,11 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { AlarmClock, BadgeCheck, CreditCard, Timer, Wallet } from "lucide-react";
+import { AlarmClock, BadgeCheck, HandCoins, Route, ShoppingBag, Wallet } from "lucide-react";
 import { claim } from "@/app/actions";
-import { TimeLeft } from "@/components/time-left";
 import { Button, ButtonLink, Card, Chip, ErrorText, Notice } from "@/components/ui";
-import { DELIVERY_WINDOW_MINUTES, ETA_OPTIONS, getStore } from "@/lib/config";
+import { DELIVERY_WINDOW_MINUTES, ETA_OPTIONS, PAY_METHOD_LABEL, getStore, type PayMethod } from "@/lib/config";
 import { money } from "@/lib/format";
 import type { DartRequest } from "@/lib/types";
 import { BackLink, ItemsCard, OrderHeader, useAction } from "./bits";
@@ -16,20 +15,24 @@ export function ProspectView({
   ready,
   active,
   budgetCents,
-  loadedCents,
+  requesterMethods,
+  myMethods,
 }: {
   req: DartRequest;
   ready: boolean;
   active: boolean;
-  /** The runner's budget, and how much of it the orders already on their card use. */
+  /** The most this runner will front for one order. */
   budgetCents: number;
-  loadedCents: number;
+  /** How the requester can pay, and how this runner can be paid. */
+  requesterMethods: PayMethod[];
+  myMethods: PayMethod[];
 }) {
   const [eta, setEta] = useState<number | null>(null);
   const { pending, error, run } = useAction();
   const store = getStore(req.store);
   const open = req.status === "open" && new Date(req.expires_at) > new Date();
-  const budgetLeft = Math.max(0, budgetCents - loadedCents);
+  const shared = requesterMethods.filter((m) => myMethods.includes(m));
+  const theirs = requesterMethods.map((m) => PAY_METHOD_LABEL[m]).join(" or ");
 
   return (
     <div className="space-y-4 px-4 pb-8 pt-4">
@@ -38,14 +41,20 @@ export function ProspectView({
       <ItemsCard req={req} spot={null} showSpot={false} />
 
       <Card className="grid grid-cols-3 divide-x divide-line py-4 text-center">
-        <Fact icon={<Wallet className="size-5" />} value={`+${money(req.runner_fee_cents)}`} label="You earn" />
-        <Fact icon={<CreditCard className="size-5" />} value={money(req.max_price_cents)} label="Card limit" />
-        <Fact icon={<Timer className="size-5" />} value={<TimeLeft iso={req.expires_at} />} label="Closes in" />
+        <Fact icon={<Wallet className="size-5" />} value={`~${money(req.runner_fee_cents)}`} label="You earn, est." />
+        <Fact icon={<ShoppingBag className="size-5" />} value={money(req.max_price_cents)} label="You front, at most" />
+        <Fact icon={<Route className="size-5" />} value={req.distance_miles != null ? `~${req.distance_miles} mi` : "—"} label="Store → drop-off" />
       </Card>
 
       <Notice tone="lime">
-        Claiming adds this order to your Dart card: up to {money(req.max_price_cents)}, only at{" "}
-        {store ? `${store.name} ${store.where}` : "this store"}, for one purchase. You never spend your own money.
+        <span className="flex gap-2.5">
+          <HandCoins className="mt-0.5 size-4 shrink-0" />
+          <span>
+            You buy it at {store ? `${store.name} ${store.where}` : "the store"} with your own money (up to {money(req.max_price_cents)}) and
+            send a photo of the receipt with its total. Your exact fee is set from the real price (up to {money(req.runner_fee_cents)}). The requester
+            confirms the receipt, then at handoff pays you both with {theirs || "Venmo or Zelle"} and gives you their 4-digit code.
+          </span>
+        </span>
       </Notice>
 
       {!open ? (
@@ -56,14 +65,20 @@ export function ProspectView({
         <ButtonLink href="/run/setup" full size="lg">
           <BadgeCheck className="size-5" /> Set up to run first
         </ButtonLink>
-      ) : req.max_price_cents > budgetLeft ? (
+      ) : req.max_price_cents > budgetCents ? (
         <Card className="space-y-3 p-4">
           <Notice tone="warn">
-            This order could cost up to {money(req.max_price_cents)}, more than the {money(budgetLeft)} left of your{" "}
-            {money(budgetCents)} budget{loadedCents > 0 ? " after the orders already on your card" : ""}.
+            This order could cost up to {money(req.max_price_cents)}, more than the {money(budgetCents)} you said you&apos;d front.
           </Notice>
           <ButtonLink href="/run" variant="secondary" full>
-            Change my budget
+            Change my max
+          </ButtonLink>
+        </Card>
+      ) : shared.length === 0 ? (
+        <Card className="space-y-3 p-4">
+          <Notice tone="warn">This requester pays with {theirs}. Add it to your profile to take this order.</Notice>
+          <ButtonLink href="/profile" variant="secondary" full>
+            Add {theirs}
           </ButtonLink>
         </Card>
       ) : (
@@ -72,8 +87,8 @@ export function ProspectView({
             <AlarmClock className="mt-0.5 size-5 shrink-0" />
             <p>
               <b>The {DELIVERY_WINDOW_MINUTES}-minute clock starts the moment you tap Claim.</b> In that time, buy the items and hand
-              them off. If you haven&apos;t bought them by then, the order goes back on the shopping list. Claim when you&apos;re
-              about to head to the store or already there.
+              them off. Not bought in time: it goes back on the list for someone else. Claim when you&apos;re about to head to the
+              store or already there.
             </p>
           </div>
           <p className="font-bold">When will you be at {req.dropoff_zone}?</p>

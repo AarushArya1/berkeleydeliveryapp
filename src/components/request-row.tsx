@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { money } from "@/lib/format";
+import { owesRunner } from "@/lib/pay";
 import type { DartRequest } from "@/lib/types";
 import { StatusPill, StoreAvatar, storeLabel } from "./order-bits";
 import { ClockTime, TimeLeft } from "./time-left";
@@ -13,8 +14,9 @@ export function RequestRow({ req, as }: { req: DartRequest; as: "requester" | "r
   else if (as === "runner" && req.deliver_by && ["claimed", "purchased", "delivering"].includes(req.status))
     meta = <>Deliver by <ClockTime iso={req.deliver_by} /></>;
   else if (req.status === "claimed" && req.eta_at) meta = <>Arriving ~<ClockTime iso={req.eta_at} /></>;
-  else if (req.charged_cents != null && as === "requester") meta = <>Charged {money(req.charged_cents)}</>;
-  else if (as === "runner" && ["completed", "cancelled"].includes(req.status) && req.payout_status === "released") meta = <>Earned {money(req.runner_fee_cents)}</>;
+  else if (owesRunner(req)) meta = as === "requester" ? <>You owe {money(req.charged_cents)}</> : <>Owed {money(req.charged_cents)}</>;
+  else if (req.completed_at && req.charged_cents != null && as === "requester") meta = <>Paid {money(req.charged_cents)}</>;
+  else if (as === "runner" && req.status === "completed") meta = <>Earned {money(req.runner_fee_cents)}</>;
   else meta = storeLabel(req.store);
 
   return (
