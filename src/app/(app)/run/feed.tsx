@@ -66,6 +66,8 @@ export function Feed({
     saveFilter("zones", next);
   };
 
+  // Their own dorm first, then the rest in picker order.
+  const zoneOrder = [...homeZones, ...LAUNCH_ZONES.filter((z) => !homeZones.includes(z))];
   const inZone = (r: DartRequest) => zones.length === 0 || zones.includes(r.dropoff_zone);
   const counts: Record<string, number> = {};
   for (const r of requests) if (inZone(r)) counts[r.store] = (counts[r.store] ?? 0) + 1;
@@ -92,7 +94,7 @@ export function Feed({
         Delivering to
       </FilterLabel>
       <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
-        {LAUNCH_ZONES.map((z) => (
+        {zoneOrder.map((z) => (
           <CheckChip key={z} checked={zones.includes(z)} onClick={() => toggleZone(z)}>
             {z}
             {homeZones.includes(z) ? <Home className="size-3.5 opacity-70" /> : null}

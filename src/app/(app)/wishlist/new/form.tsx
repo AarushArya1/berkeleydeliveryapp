@@ -5,8 +5,8 @@ import clsx from "clsx";
 import { ChevronDown, HandCoins, Lock, Minus, Plus } from "lucide-react";
 import { postRequest } from "@/app/actions";
 import { PriceBreakdown } from "@/components/order-bits";
-import { Button, Card, Checkbox, Chip, ErrorText, Input, Label, Notice, Textarea } from "@/components/ui";
-import { DURATIONS, LAUNCH_ZONES, LIMITS, PAY_METHOD_LABEL, STORES, findRestricted, type PayMethod } from "@/lib/config";
+import { Button, Card, Checkbox, Chip, ErrorText, Input, Label, Notice, Select, Textarea } from "@/components/ui";
+import { DROPOFF_GROUPS, DURATIONS, LIMITS, PAY_METHOD_LABEL, STORES, findRestricted, type PayMethod } from "@/lib/config";
 import { quote } from "@/lib/fees";
 import { money } from "@/lib/format";
 
@@ -158,14 +158,16 @@ export function NewRequestForm({
         </section>
 
         <section>
-          <Label>Drop-off</Label>
-          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
-            {LAUNCH_ZONES.map((z) => (
-              <Chip key={z} selected={zone === z} onClick={() => setZone(z)}>
-                {z}
-              </Chip>
+          <Label htmlFor="zone">Drop-off</Label>
+          <Select id="zone" value={zone} onChange={(e) => setZone(e.target.value)}>
+            {DROPOFF_GROUPS.map((g) => (
+              <optgroup key={g.name} label={g.name}>
+                {g.spots.map((s) => (
+                  <option key={s.name}>{s.name}</option>
+                ))}
+              </optgroup>
             ))}
-          </div>
+          </Select>
           <Input
             className="mt-3"
             value={spot}

@@ -11,7 +11,7 @@ import { Logo } from "@/components/logo";
 import { PayAccountFields } from "@/components/pay-accounts";
 import { PushButton } from "@/components/push-button";
 import { Button, Card, Checkbox, ErrorText, Input, Label, Select } from "@/components/ui";
-import { DORMS, UNPAID_BAN_HOURS } from "@/lib/config";
+import { DROPOFF_GROUPS, UNPAID_BAN_HOURS } from "@/lib/config";
 import { REPORTABLE } from "@/lib/legal";
 
 type Done = { profile: boolean; homeScreen: boolean; terms: boolean };
@@ -85,14 +85,21 @@ function ProfileStep({ initial }: { initial: Initial }) {
         <Input id="name" autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Oski Bear" />
       </div>
       <div>
-        <Label htmlFor="dorm">Dorm</Label>
+        <Label htmlFor="dorm" hint="Your default drop-off">
+          Where you live
+        </Label>
         <Select id="dorm" value={dorm} onChange={(e) => setDorm(e.target.value)}>
           <option value="" disabled>
-            Choose your dorm
+            Choose your dorm or area
           </option>
-          {DORMS.map((d) => (
-            <option key={d}>{d}</option>
+          {DROPOFF_GROUPS.slice(0, 2).map((g) => (
+            <optgroup key={g.name} label={g.name}>
+              {g.spots.map((s) => (
+                <option key={s.name}>{s.name}</option>
+              ))}
+            </optgroup>
           ))}
+          <option>Off-campus</option>
         </Select>
       </div>
       <div>
@@ -136,6 +143,10 @@ function HomeScreenStep() {
   if (!install) return null;
   const installed = install.standalone;
   const desktop = install.platform === "desktop";
+  // iPhone only allows notifications from the home-screen app. Android allows
+  // them in the browser too, and its "Add to Home screen" can make a shortcut
+  // that opens in a browser tab, so installing is recommended there, not required.
+  const android = install.platform === "android";
 
   return (
     <div className="space-y-5">
@@ -156,17 +167,22 @@ function HomeScreenStep() {
           >
             {installed ? <Check className="size-5" strokeWidth={3} /> : <Smartphone className="size-5" />}
           </span>
-          <p className="font-bold">{installed ? "Added to your home screen" : "Add Dart to your home screen"}</p>
+          <p className="font-bold">
+            {installed ? "Added to your home screen" : android ? "Add Dart to your home screen (recommended)" : "Add Dart to your home screen"}
+          </p>
         </div>
         {installed ? null : <InstallGuide platform={install.platform} />}
       </Card>
 
-      {installed || desktop ? (
+      {installed || desktop || android ? (
         <>
           <PushButton onDone={(r) => setPushed(r === "granted")} />
           <Button full size="lg" variant={pushed ? "primary" : "secondary"} onClick={finish} loading={pending}>
             {pushed ? "Continue" : desktop ? "Continue on this computer" : "Skip notifications for now"}
           </Button>
+          {android && !installed ? (
+            <p className="text-center text-xs text-muted">You can keep using Dart right here in Chrome and add it to your home screen later.</p>
+          ) : null}
         </>
       ) : (
         <p className="text-center text-sm text-muted">

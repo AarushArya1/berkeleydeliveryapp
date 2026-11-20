@@ -52,29 +52,59 @@ export function getStore(id: string): Store | undefined {
   return STORES.find((s) => s.id === id);
 }
 
-// Dorms asked for at sign-up. The launch area is one dorm cluster; only those
-// can be drop-off areas for now.
-export const DORMS = [
-  "Unit 1",
-  "Unit 2",
-  "Unit 3",
-  "Blackwell Hall",
-  "Martinez Commons",
-  "Foothill",
-  "Stern Hall",
-  "Clark Kerr",
-  "Off-campus",
+// Drop-off locations, grouped for the pickers. Each has rough coordinates for
+// the fee's distance (approximate: good to a block or so).
+type Spot = { name: string; lat: number; lng: number };
+
+export const DROPOFF_GROUPS: { name: string; spots: Spot[] }[] = [
+  {
+    name: "Residence halls",
+    spots: [
+      { name: "Unit 1", lat: 37.8673, lng: -122.2547 },
+      { name: "Unit 2", lat: 37.8659, lng: -122.2551 },
+      { name: "Unit 3", lat: 37.8669, lng: -122.261 },
+      { name: "Blackwell Hall", lat: 37.8686, lng: -122.2622 },
+      { name: "Martinez Commons", lat: 37.8661, lng: -122.2563 },
+      { name: "Anchor House", lat: 37.8679, lng: -122.265 },
+      { name: "Foothill", lat: 37.8755, lng: -122.256 },
+      { name: "Stern Hall", lat: 37.8762, lng: -122.2585 },
+      { name: "Bowles Hall", lat: 37.8727, lng: -122.253 },
+      { name: "Clark Kerr", lat: 37.8641, lng: -122.249 },
+    ],
+  },
+  {
+    name: "Apartments & neighborhoods",
+    spots: [
+      { name: "Southside apartments", lat: 37.8665, lng: -122.2585 },
+      { name: "Northside apartments", lat: 37.8765, lng: -122.2605 },
+      { name: "Downtown apartments", lat: 37.8705, lng: -122.2685 },
+      { name: "Elmwood / Clark Kerr area", lat: 37.86, lng: -122.2525 },
+    ],
+  },
+  {
+    name: "Campus spots",
+    spots: [
+      { name: "Sproul Plaza", lat: 37.8694, lng: -122.2591 },
+      { name: "MLK Student Union", lat: 37.869, lng: -122.2597 },
+      { name: "Moffitt Library", lat: 37.8726, lng: -122.2608 },
+      { name: "Doe Library", lat: 37.8722, lng: -122.2594 },
+      { name: "Memorial Glade", lat: 37.8729, lng: -122.2592 },
+      { name: "Crossroads", lat: 37.8667, lng: -122.2563 },
+      { name: "Cafe 3", lat: 37.8675, lng: -122.2602 },
+    ],
+  },
 ];
 
-export const LAUNCH_ZONES = ["Unit 1", "Unit 2", "Unit 3", "Blackwell Hall", "Martinez Commons"];
+/** Every drop-off location, in picker order. */
+export const LAUNCH_ZONES = DROPOFF_GROUPS.flatMap((g) => g.spots.map((s) => s.name));
 
-export const ZONE_COORDS: Record<string, { lat: number; lng: number }> = {
-  "Unit 1": { lat: 37.8673, lng: -122.2547 },
-  "Unit 2": { lat: 37.8659, lng: -122.2551 },
-  "Unit 3": { lat: 37.8669, lng: -122.2610 },
-  "Blackwell Hall": { lat: 37.8683, lng: -122.2618 },
-  "Martinez Commons": { lat: 37.8661, lng: -122.2563 },
-};
+export const ZONE_COORDS: Record<string, { lat: number; lng: number }> = Object.fromEntries(
+  DROPOFF_GROUPS.flatMap((g) => g.spots.map((s) => [s.name, { lat: s.lat, lng: s.lng }])),
+);
+
+// "Where you live", asked at sign-up: the halls and apartment areas above,
+// plus a catch-all. It becomes the default drop-off when it's one of them.
+export const DORMS = [...DROPOFF_GROUPS[0].spots, ...DROPOFF_GROUPS[1].spots].map((s) => s.name).concat("Off-campus");
 
 export const DURATIONS = [
   { label: "1 hr", hours: 1 },

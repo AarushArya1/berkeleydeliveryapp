@@ -9,7 +9,9 @@ import { money } from "@/lib/format";
 
 export function Welcome() {
   const install = useInstallState();
-  const needsInstall = install && !install.standalone && install.platform !== "desktop";
+  // Only iPhone has to start from the home-screen app (it's the only way to get
+  // notifications there). Android can sign up in Chrome and install later.
+  const needsInstall = install && !install.standalone && install.platform === "ios";
 
   return (
     <div className="min-h-dvh bg-gradient-to-b from-lime-100 via-lime-50 to-white">
