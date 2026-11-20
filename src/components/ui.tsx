@@ -38,7 +38,7 @@ export function Button({
   ...props
 }: ComponentProps<"button"> & { variant?: Variant; size?: Size; full?: boolean; loading?: boolean }) {
   return (
-    <button className={clsx(buttonClass(variant, size, full), className)} disabled={loading || props.disabled} {...props}>
+    <button className={clsx(buttonClass(variant, size, full), className)} {...props} disabled={loading || props.disabled}>
       {loading ? <Spinner /> : null}
       {children}
     </button>

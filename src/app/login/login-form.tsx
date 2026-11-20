@@ -18,9 +18,13 @@ export function LoginForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const codeRef = useRef<HTMLInputElement>(null);
+  const sending = useRef(false);
 
   async function sendCode(e?: { preventDefault(): void }) {
     e?.preventDefault();
+    // A double tap (or Enter + tap) sends two sign-ups for the same new email at
+    // once; Supabase saves one and fails the other with "Database error saving new user".
+    if (sending.current) return;
     setError(null);
     const user = netId.trim().toLowerCase().replace(/@berkeley\.edu$/, "");
     if (!/^[a-z0-9._+-]+$/.test(user)) {
@@ -28,11 +32,19 @@ export function LoginForm() {
       return;
     }
     const email = `${user}@berkeley.edu`;
+    sending.current = true;
     setBusy(true);
     const { error } = await (await createClient()).auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+    sending.current = false;
     setBusy(false);
     if (error) {
-      setError(error.message.includes("berkeley.edu") ? "Dart is only open to @berkeley.edu emails." : error.message);
+      setError(
+        error.message.includes("berkeley.edu")
+          ? "Dart is only open to @berkeley.edu emails."
+          : error.message.startsWith("Database error")
+            ? "Something went wrong sending your code. Try again."
+            : error.message,
+      );
       return;
     }
     setSentTo(email);
