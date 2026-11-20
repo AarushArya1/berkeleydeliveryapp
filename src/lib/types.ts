@@ -13,6 +13,7 @@ export type Profile = {
   runner_terms_accepted_at: string | null;
   payouts_ready_at: string | null;
   card_issued_at: string | null;
+  runner_budget_cents: number | null;
   is_admin: boolean;
   status: ProfileStatus;
   no_show_count: number;

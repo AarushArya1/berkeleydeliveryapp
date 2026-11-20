@@ -4,7 +4,7 @@ import { getMember } from "@/lib/auth";
 import { LAUNCH_ZONES } from "@/lib/config";
 import { NewRequestForm } from "./form";
 
-export const metadata = { title: "Add to wishlist · Dart" };
+export const metadata = { title: "Add to shopping list · Dart" };
 
 export default function NewRequestPage() {
   return (

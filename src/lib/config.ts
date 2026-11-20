@@ -34,6 +34,14 @@ export const TRUST_TIERS = [
 ];
 export const TRUST_TIER_MIN_RATING = 4.5;
 
+// The most a runner is willing to have on their Dart card at once, across every
+// order they've claimed. They pick it at runner setup and can change it any time.
+export const RUNNER_BUDGET = { minCents: 1000, maxCents: 15000, stepCents: 500, defaultCents: 5000 };
+
+export function runnerBudgetCents(profile: { runner_budget_cents: number | null }) {
+  return profile.runner_budget_cents ?? RUNNER_BUDGET.defaultCents;
+}
+
 export const NO_SHOW_BAN_THRESHOLD = 2; // "repeat no-shows are banned"
 export const FALLBACK_RELEASE_HOURS = 3;
 export const MAX_CODE_ATTEMPTS = 5;
@@ -94,8 +102,8 @@ export const DURATIONS = [
 ];
 export const MAX_DURATION_HOURS = 144; // card holds expire after ~7 days
 
-// Once a runner claims, they have this long to buy and hand off the order.
-// Not bought in time: the claim is released back to the wishlist.
+// The clock starts the moment a runner claims (accepts) an order: they have this long to buy and hand off the order.
+// Not bought in time: the claim is released back to the shopping list.
 // Bought but late: both sides are notified and the team sees it on /admin.
 export const DELIVERY_WINDOW_MINUTES = 45;
 export const DELIVERY_WARNING_MINUTES = 10; // "10 minutes left" push

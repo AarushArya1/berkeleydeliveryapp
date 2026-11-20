@@ -6,9 +6,10 @@ import clsx from "clsx";
 import { Check, CreditCard, IdCard, Landmark, ShieldAlert } from "lucide-react";
 import { acceptRunnerTerms, completePayoutSetup, createDartCard } from "@/app/actions";
 import { DartCardRules, DartCardVisual } from "@/components/dart-card";
+import { BudgetStepper } from "@/components/runner-budget";
 import { Button, ButtonLink, Card, Checkbox, ErrorText, Placeholder } from "@/components/ui";
 import { RUNNER_CARD_WARNING } from "@/lib/legal";
-import { DELIVERY_WINDOW_MINUTES } from "@/lib/config";
+import { DELIVERY_WINDOW_MINUTES, RUNNER_BUDGET } from "@/lib/config";
 import type { Card as DartCard, CardLoad } from "@/lib/types";
 
 export function RunnerSetup({
@@ -24,6 +25,7 @@ export function RunnerSetup({
 }) {
   const router = useRouter();
   const [agreed, setAgreed] = useState(false);
+  const [budget, setBudget] = useState(RUNNER_BUDGET.defaultCents);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const cardDone = Boolean(card);
@@ -115,13 +117,21 @@ export function RunnerSetup({
                     It starts locked with nothing on it. Each order you claim is added with its own limit (the max price) and its own store,
                     and comes off the card right after you pay for it.
                   </p>
+                  <div className="rounded-2xl border border-line p-4">
+                    <p className="font-bold">Your budget</p>
+                    <p className="mb-4 text-sm text-muted">
+                      The most you&apos;re willing to have on your card at once, across all your orders. Dart pays, not you. You can
+                      change it any time on the Run tab.
+                    </p>
+                    <BudgetStepper value={budget} onChange={setBudget} />
+                  </div>
                   <ErrorText>{error}</ErrorText>
                   <Button
                     full
                     loading={pending}
                     onClick={() =>
                       start(async () => {
-                        const r = await createDartCard();
+                        const r = await createDartCard(budget);
                         setError(r.ok ? null : r.error);
                       })
                     }
@@ -139,7 +149,7 @@ export function RunnerSetup({
         <div className="animate-rise mt-6 space-y-3 text-center">
           <p className="text-lg font-bold">You&apos;re ready to run 🏃</p>
           <p className="text-sm text-muted">
-            Heads up: once you claim an order you have {DELIVERY_WINDOW_MINUTES} minutes to buy it and hand it off.
+            Heads up: from the moment you claim an order, you have {DELIVERY_WINDOW_MINUTES} minutes to buy it and hand it off.
           </p>
           <ButtonLink href="/run" full size="lg" onClick={() => router.refresh()}>
             Find orders

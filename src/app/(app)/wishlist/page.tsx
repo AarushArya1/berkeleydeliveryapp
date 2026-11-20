@@ -8,7 +8,7 @@ import { firstName } from "@/lib/format";
 import { runMaintenance } from "@/lib/orders";
 import type { DartRequest } from "@/lib/types";
 
-export const metadata = { title: "Wishlist · Dart" };
+export const metadata = { title: "Shopping list · Dart" };
 
 const ACTIVE = ["open", "claimed", "purchased", "delivering", "dropped_off", "disputed"];
 
@@ -36,7 +36,7 @@ async function Wishlist() {
 
   return (
     <div className="px-4 pt-5">
-      <RealtimeRefresh channel={`wishlist-${userId}`} filter={`requester_id=eq.${userId}`} />
+      <RealtimeRefresh channel={`list-${userId}`} filter={`requester_id=eq.${userId}`} />
       <h1 className="text-2xl font-extrabold tracking-tight">Hey {firstName(profile.full_name)} 👋</h1>
       <p className="mt-1 text-muted">What do you need from the store?</p>
 
@@ -48,7 +48,7 @@ async function Wishlist() {
 
       <div className="mt-6">
         {requests.length === 0 ? (
-          <EmptyState icon={<ShoppingBasket className="size-7" />} title="Your wishlist is empty">
+          <EmptyState icon={<ShoppingBasket className="size-7" />} title="Your shopping list is empty">
             <p>Add what you need. A student already heading to the store will pick it up.</p>
             <ButtonLink href="/wishlist/new" className="mt-5">
               Add your first item
@@ -67,7 +67,7 @@ async function Wishlist() {
               </>
             ) : (
               <ButtonLink href="/wishlist/new" full size="lg" className="mb-2">
-                Add to your wishlist
+                Add to your shopping list
               </ButtonLink>
             )}
             {past.length > 0 ? (

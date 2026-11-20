@@ -25,7 +25,7 @@ export function Welcome() {
             <span className="text-action">Someone&apos;s already going.</span>
           </h1>
           <p className="mt-4 text-[17px] leading-relaxed text-muted">
-            Post it to your wishlist. A Berkeley student heading to the store picks it up and brings it to your dorm.
+            Add it to your shopping list. A Berkeley student heading to the store picks it up and brings it to your dorm.
           </p>
         </div>
 

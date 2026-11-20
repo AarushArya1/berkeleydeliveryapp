@@ -7,8 +7,8 @@ import { AlarmClock } from "lucide-react";
 import { DELIVERY_WARNING_MINUTES, DELIVERY_WINDOW_MINUTES } from "@/lib/config";
 import { clockTime } from "@/lib/format";
 
-/** Live "X min left to deliver" banner for the runner. */
-export function DeliveryCountdown({ deliverBy, bought }: { deliverBy: string; bought: boolean }) {
+/** Live "X min left to deliver" banner for the runner. The clock started when they claimed. */
+export function DeliveryCountdown({ deliverBy, claimedAt, bought }: { deliverBy: string; claimedAt: string | null; bought: boolean }) {
   const router = useRouter();
   const [now, setNow] = useState(() => Date.now());
   const end = new Date(deliverBy).getTime();
@@ -51,11 +51,16 @@ export function DeliveryCountdown({ deliverBy, bought }: { deliverBy: string; bo
             {over
               ? bought
                 ? "Hand off the order now. The Dart team has been notified."
-                : "This order is going back on the wishlist."
+                : "This order is going back on the shopping list."
               : bought
                 ? `Hand it off by ${clockTime(deliverBy)}.`
-                : `Buy and hand off by ${clockTime(deliverBy)}, or it goes back on the wishlist.`}
+                : `Buy and hand off by ${clockTime(deliverBy)}, or it goes back on the shopping list.`}
           </p>
+          {claimedAt && !over ? (
+            <p className="mt-0.5 text-xs text-ink/60" suppressHydrationWarning>
+              {DELIVERY_WINDOW_MINUTES}-min clock started when you claimed it at {clockTime(claimedAt)}.
+            </p>
+          ) : null}
         </div>
       </div>
       {!over ? (

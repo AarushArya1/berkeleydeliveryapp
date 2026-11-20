@@ -21,6 +21,7 @@ import {
   TRUST_TIER_MIN_RATING,
   findRestricted,
   getStore,
+  runnerBudgetCents,
 } from "./config";
 import { clockTime, displayName, money } from "./format";
 import { inBackground } from "./background";
@@ -177,6 +178,16 @@ export async function claimRequest(runnerId: string, requestId: string, etaMinut
   if (!card) return fail("Create your Dart card in runner setup first");
   if (card.status === "frozen") return fail("Your Dart card is frozen. Contact the Dart team.");
 
+  // The runner's own cap on how much can be on their card at once.
+  const { data: onCard } = await db.from("card_loads").select("amount_cents").eq("card_id", card.id).eq("status", "loaded");
+  const loadedCents = (onCard ?? []).reduce((sum, l) => sum + l.amount_cents, 0);
+  const budget = runnerBudgetCents(runner!);
+  if (loadedCents + req.max_price_cents > budget) {
+    return fail(
+      `This order could cost up to ${money(req.max_price_cents)}, which would put you over your ${money(budget)} budget (${money(Math.max(0, budget - loadedCents))} left). Raise your budget on the Run tab to claim it.`,
+    );
+  }
+
   const now = Date.now();
   const eta = new Date(now + etaMinutes * 60_000).toISOString();
   const deliverBy = new Date(now + DELIVERY_WINDOW_MINUTES * 60_000).toISOString();
@@ -216,14 +227,14 @@ export async function claimRequest(runnerId: string, requestId: string, etaMinut
   return { ok: true };
 }
 
-/** Runner backs out before buying anything. The request goes back on the wishlist. */
+/** Runner backs out before buying anything. The request goes back on the shopping list. */
 export async function releaseClaim(runnerId: string, requestId: string): Promise<ActionResult> {
   const req = await getRequest(requestId);
   if (!req || req.runner_id !== runnerId || req.status !== "claimed") return fail("You can only release an order before buying it");
   return unclaim(req, "released");
 }
 
-/** Put a claimed (not yet bought) order back on the wishlist, or close it if its window is over. */
+/** Put a claimed (not yet bought) order back on the shopping list, or close it if its window is over. */
 async function unclaim(req: DartRequest, why: "released" | "timed_out"): Promise<ActionResult> {
   const stillOpen = new Date(req.expires_at) > new Date();
   const reset = { runner_id: null, claimed_at: null, eta_at: null, deliver_by: null, deliver_warned_at: null };
@@ -246,14 +257,14 @@ async function unclaim(req: DartRequest, why: "released" | "timed_out"): Promise
     notifyPush(
       req.runner_id,
       "Time's up — order released",
-      `You didn't buy "${shortItems(req.items)}" within ${DELIVERY_WINDOW_MINUTES} minutes, so it went back on the wishlist and it was taken off your Dart card.`,
+      `You didn't buy "${shortItems(req.items)}" within ${DELIVERY_WINDOW_MINUTES} minutes of claiming it, so it went back on the shopping list and it was taken off your Dart card.`,
       req,
     );
   }
   notifyPush(
     req.requester_id,
     why === "timed_out" ? "Your runner ran out of time" : "Your runner can't make it",
-    stillOpen ? "Your request is back on the wishlist." : "Your request closed. You weren't charged.",
+    stillOpen ? "Your request is back on the shopping list." : "Your request closed. You weren't charged.",
     req,
   );
   return { ok: true };
@@ -702,7 +713,7 @@ export async function runMaintenance({ force = false } = {}) {
       req.runner_id,
       `${DELIVERY_WARNING_MINUTES} minutes left to deliver`,
       req.status === "claimed"
-        ? "Buy the items soon, or the order goes back on the wishlist."
+        ? "Buy the items soon, or the order goes back on the shopping list."
         : `Hand off "${shortItems(req.items)}" before ${clockTime(req.deliver_by!)}.`,
       req,
     );

@@ -51,7 +51,7 @@ export function NewRequestForm({ defaultZone, defaultSpot }: { defaultZone: stri
 
   return (
     <form onSubmit={submit} className="px-4 pb-40 pt-5">
-      <h1 className="text-2xl font-extrabold tracking-tight">Add to wishlist</h1>
+      <h1 className="text-2xl font-extrabold tracking-tight">Add to your shopping list</h1>
       <p className="mt-1 text-muted">Takes 20 seconds. You&apos;re only charged what it actually costs.</p>
 
       <div className="mt-6 space-y-7">

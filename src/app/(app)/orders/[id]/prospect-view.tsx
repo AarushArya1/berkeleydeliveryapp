@@ -11,11 +11,25 @@ import type { DartRequest } from "@/lib/types";
 import { BackLink, ItemsCard, OrderHeader, useAction } from "./bits";
 
 /** A runner looking at an open request they could claim. */
-export function ProspectView({ req, ready, active }: { req: DartRequest; ready: boolean; active: boolean }) {
+export function ProspectView({
+  req,
+  ready,
+  active,
+  budgetCents,
+  loadedCents,
+}: {
+  req: DartRequest;
+  ready: boolean;
+  active: boolean;
+  /** The runner's budget, and how much of it the orders already on their card use. */
+  budgetCents: number;
+  loadedCents: number;
+}) {
   const [eta, setEta] = useState<number | null>(null);
   const { pending, error, run } = useAction();
   const store = getStore(req.store);
   const open = req.status === "open" && new Date(req.expires_at) > new Date();
+  const budgetLeft = Math.max(0, budgetCents - loadedCents);
 
   return (
     <div className="space-y-4 px-4 pb-8 pt-4">
@@ -42,13 +56,24 @@ export function ProspectView({ req, ready, active }: { req: DartRequest; ready: 
         <ButtonLink href="/run/setup" full size="lg">
           <BadgeCheck className="size-5" /> Set up to run first
         </ButtonLink>
+      ) : req.max_price_cents > budgetLeft ? (
+        <Card className="space-y-3 p-4">
+          <Notice tone="warn">
+            This order could cost up to {money(req.max_price_cents)}, more than the {money(budgetLeft)} left of your{" "}
+            {money(budgetCents)} budget{loadedCents > 0 ? " after the orders already on your card" : ""}.
+          </Notice>
+          <ButtonLink href="/run" variant="secondary" full>
+            Change my budget
+          </ButtonLink>
+        </Card>
       ) : (
         <Card className="space-y-4 p-4">
           <div className="flex gap-3 rounded-2xl bg-warn-soft p-3.5 text-sm leading-relaxed text-warn-ink">
             <AlarmClock className="mt-0.5 size-5 shrink-0" />
             <p>
-              <b>You&apos;ll have {DELIVERY_WINDOW_MINUTES} minutes</b> from claiming to buy the items and hand them off. If you
-              haven&apos;t bought them by then, the order goes back on the wishlist. Only claim when you&apos;re heading to the store.
+              <b>The {DELIVERY_WINDOW_MINUTES}-minute clock starts the moment you tap Claim.</b> In that time, buy the items and hand
+              them off. If you haven&apos;t bought them by then, the order goes back on the shopping list. Claim when you&apos;re
+              about to head to the store or already there.
             </p>
           </div>
           <p className="font-bold">When will you be at {req.dropoff_zone}?</p>
@@ -61,7 +86,7 @@ export function ProspectView({ req, ready, active }: { req: DartRequest; ready: 
           </div>
           <ErrorText>{error}</ErrorText>
           <Button full size="lg" disabled={eta == null} loading={pending} onClick={() => run(() => claim(req.id, eta!))}>
-            Claim · {DELIVERY_WINDOW_MINUTES} min to deliver
+            Claim · starts {DELIVERY_WINDOW_MINUTES}-min clock
           </Button>
         </Card>
       )}

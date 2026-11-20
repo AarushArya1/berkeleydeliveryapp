@@ -52,7 +52,8 @@ const sections: [string, string[]][] = [
     "Runners and the Dart card",
     [
       "Each runner gets one Dart virtual card. It holds no money until you claim an order. Each claimed order is loaded onto it separately: up to that requester's maximum price, at that order's store, for a single purchase. A purchase pays for the order loaded for that store; if you have more than one order at the same store, you must choose which one you're paying for first. After its purchase, or if the order is cancelled, released or runs out of time, that order comes off the card. With no orders on it, the card is locked.",
-      `Once you claim an order you have ${DELIVERY_WINDOW_MINUTES} minutes to buy the items and hand them off. If you haven't bought them in that time, the order is released back to the wishlist and taken off your Dart card.`,
+      `You have ${DELIVERY_WINDOW_MINUTES} minutes, counted from the moment you claim an order, to buy the items and hand them off. If you haven't bought them in that time, the order is released back to the shopping list and taken off your Dart card.`,
+      "You set a budget: the most you're willing to have on your Dart card at once across all the orders you've claimed. You can't claim an order that would put you over it, and you can change it any time.",
       RUNNER_CARD_WARNING,
     ],
   ],

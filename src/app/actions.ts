@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/auth";
 import { admin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { DORMS } from "@/lib/config";
+import { DORMS, RUNNER_BUDGET } from "@/lib/config";
 import { normalizePhone } from "@/lib/format";
 import * as orders from "@/lib/orders";
 import { payments } from "@/lib/payments";
@@ -83,14 +83,29 @@ export async function completePayoutSetup(): Promise<ActionResult> {
  * PAYMENTS PLACEHOLDER for creating the runner's Stripe Issuing cardholder +
  * virtual card. One card per runner, made at the end of runner setup.
  */
-export async function createDartCard(): Promise<ActionResult> {
+function validBudget(cents: number) {
+  return Number.isInteger(cents) && cents >= RUNNER_BUDGET.minCents && cents <= RUNNER_BUDGET.maxCents && cents % RUNNER_BUDGET.stepCents === 0;
+}
+
+export async function createDartCard(budgetCents: number): Promise<ActionResult> {
   const userId = await requireUser();
+  if (!validBudget(budgetCents)) return { ok: false, error: "Pick a budget" };
   const db = admin();
   const { data: profile } = await db.from("profiles").select("runner_terms_accepted_at, payouts_ready_at, status").eq("id", userId).single();
   if (!profile?.runner_terms_accepted_at || !profile.payouts_ready_at) return { ok: false, error: "Finish the steps above first" };
   if (profile.status !== "active") return { ok: false, error: "Your account isn't active" };
   const card = await payments.issueRunnerCard(userId);
+  await db.from("profiles").update({ runner_budget_cents: budgetCents }).eq("id", userId);
   await db.from("profiles").update({ card_issued_at: card.created_at }).eq("id", userId).is("card_issued_at", null);
+  return done({ ok: true });
+}
+
+/** The most the runner is willing to have on their Dart card at once. */
+export async function setRunnerBudget(budgetCents: number): Promise<ActionResult> {
+  const userId = await requireUser();
+  if (!validBudget(budgetCents)) return { ok: false, error: "Pick a budget" };
+  const { error } = await admin().from("profiles").update({ runner_budget_cents: budgetCents }).eq("id", userId);
+  if (error) return { ok: false, error: "Couldn't save. Try again." };
   return done({ ok: true });
 }
 

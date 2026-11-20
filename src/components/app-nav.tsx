@@ -68,7 +68,7 @@ export function BottomNav() {
           { href: "/profile", label: "Profile", icon: UserRound, match: (p: string) => p.startsWith("/profile") },
         ]
       : [
-          { href: "/wishlist", label: "Wishlist", icon: ListChecks, match: (p: string) => p === "/wishlist" },
+          { href: "/wishlist", label: "My list", icon: ListChecks, match: (p: string) => p === "/wishlist" },
           { href: "/wishlist/new", label: "Add", icon: Plus, match: (p: string) => p === "/wishlist/new", primary: true },
           { href: "/profile", label: "Profile", icon: UserRound, match: (p: string) => p.startsWith("/profile") },
         ];
@@ -81,7 +81,7 @@ export function BottomNav() {
           const Icon = t.icon;
           if ("primary" in t && t.primary) {
             return (
-              <Link key={t.href} href={t.href} className="flex flex-col items-center gap-0.5 py-1" aria-label="Add to wishlist">
+              <Link key={t.href} href={t.href} className="flex flex-col items-center gap-0.5 py-1" aria-label="Add to shopping list">
                 <span className="-mt-5 flex size-13 items-center justify-center rounded-full bg-action text-white shadow-float ring-4 ring-white">
                   <Icon className="size-6" strokeWidth={2.6} />
                 </span>

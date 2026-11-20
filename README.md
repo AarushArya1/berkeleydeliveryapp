@@ -1,6 +1,6 @@
 # Dart
 
-Verified Berkeley students post what they need to a wishlist; students already heading to the store pick it up for a fee.
+Verified Berkeley students post what they need to a shopping list (the plan calls it a wishlist); students already heading to the store pick it up for a fee.
 
 This is the MVP prototype. It's a mobile web app (home-screen install for push) built with Next.js 16 + Supabase. **Payments are placeholders:** every money movement is simulated and recorded in a `ledger` table, so the whole order flow works end to end without Stripe.
 
@@ -104,7 +104,7 @@ src/app/admin                       team dashboard
 - **Email code, not magic link.** On iPhone a magic link opens Safari, which doesn't share a login with the home-screen app.
 - **One Dart card per runner, one load per order.** The card is created at the end of runner setup ($0.10 Issuing fee, once). Each claim adds a load (`card_loads`): that order's max price, its store, one purchase. A runner can hold several loads at once. A tap only tells us the store and amount (as with Stripe's real-time authorization webhook), so it's matched to the load for that store. If two loads are at the same store, the runner taps "I'm paying for this one" on the order first (`ARM_MINUTES`); otherwise the tap is declined. A load closes after its purchase, or if the order is cancelled, released or times out. With no loads, the card is locked.
 - **"One store" means the exact store on the request** (not just the store type), so the request form's "Preferred store" is now "Store".
-- **Runners can release an order before buying.** It goes back on the wishlist. The plan doesn't cover a runner backing out, and without this an order could get stuck.
+- **Runners can release an order before buying.** It goes back on the shopping list. The plan doesn't cover a runner backing out, and without this an order could get stuck.
 - **"Nearby" = the launch area.** There's no location tracking in v1, so every verified member sees open requests in the launch dorm cluster, with only the area shown until claim.
-- **45-minute delivery window** (`DELIVERY_WINDOW_MINUTES`). Runners see it before claiming, as a live countdown on the order, and as a push at 10 minutes left. Not bought in time: the claim is released back to the wishlist and its card is closed (the card also declines after the deadline). Bought but late: the order isn't cancelled, since the requester already paid. Both sides get a push and `/admin` flags it "Past 45 min".
+- **45-minute delivery window** (`DELIVERY_WINDOW_MINUTES`). Runners see it before claiming, as a live countdown on the order, and as a push at 10 minutes left. Not bought in time: the claim is released back to the shopping list and its card is closed (the card also declines after the deadline). Bought but late: the order isn't cancelled, since the requester already paid. Both sides get a push and `/admin` flags it "Past 45 min".
 - **Repeat no-shows** = 2 fallback auto-releases → banned (`NO_SHOW_BAN_THRESHOLD`).

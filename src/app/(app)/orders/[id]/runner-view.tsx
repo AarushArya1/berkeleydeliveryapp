@@ -45,7 +45,7 @@ export function RunnerView(p: Props) {
       </div>
       <OrderHeader req={req} />
       {req.deliver_by && ["claimed", "purchased", "delivering"].includes(req.status) ? (
-        <DeliveryCountdown deliverBy={req.deliver_by} bought={req.status !== "claimed"} />
+        <DeliveryCountdown deliverBy={req.deliver_by} claimedAt={req.claimed_at} bought={req.status !== "claimed"} />
       ) : null}
       <Card className="px-2 py-4">
         <Timeline status={req.status} before={req.status_before_dispute} />
@@ -375,7 +375,7 @@ function ReleaseButton({ requestId }: { requestId: string }) {
         variant="secondary"
         pending={pending}
         onConfirm={() => run(() => releaseClaim(requestId))}
-        confirmText="The order goes back on the wishlist for someone else and comes off your Dart card."
+        confirmText="The order goes back on the shopping list for someone else and comes off your Dart card."
       >
         Can&apos;t make it? Release this order
       </ConfirmButton>

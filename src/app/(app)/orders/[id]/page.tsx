@@ -7,7 +7,7 @@ import { admin } from "@/lib/supabase/admin";
 import { signedPhotoUrl } from "@/lib/storage";
 import { ratingFor, runMaintenance } from "@/lib/orders";
 import { displayName } from "@/lib/format";
-import { DISPUTE_WINDOW_HOURS } from "@/lib/config";
+import { DISPUTE_WINDOW_HOURS, runnerBudgetCents } from "@/lib/config";
 import type { Card, CardAuthorization, CardLoad, DartRequest, Dispute } from "@/lib/types";
 import { RequesterView } from "./requester-view";
 import { RunnerView } from "./runner-view";
@@ -54,6 +54,13 @@ async function Order({ params, searchParams }: Pick<PageProps<"/orders/[id]">, "
   const isRunner = req.runner_id === userId;
 
   if (!isRequester && !isRunner) {
+    const { data: loads } = await supabase
+      .from("card_loads")
+      .select("amount_cents")
+      .eq("runner_id", userId)
+      .eq("status", "loaded")
+      .returns<Pick<CardLoad, "amount_cents">[]>();
+    const loadedCents = (loads ?? []).reduce((sum, l) => sum + l.amount_cents, 0);
     return (
       <>
         <RealtimeRefresh channel={`order-${id}`} filter={`id=eq.${id}`} />
@@ -61,6 +68,8 @@ async function Order({ params, searchParams }: Pick<PageProps<"/orders/[id]">, "
           req={req}
           ready={isRunnerReady(profile)}
           active={profile.status === "active"}
+          budgetCents={runnerBudgetCents(profile)}
+          loadedCents={loadedCents}
         />
       </>
     );

@@ -180,15 +180,13 @@ function TermsStep() {
     <div className="space-y-5">
       <div>
         <h1 className="text-3xl font-extrabold tracking-tight">The ground rules</h1>
-        <p className="mt-2 text-muted">The short version of our Terms of Service:</p>
+        <p className="mt-2 text-muted">Three things to know:</p>
       </div>
       <Card className="divide-y divide-line">
         {[
-          ["Holds, not charges", "Posting places a hold. You're charged only what the items cost, plus fees, once they're bought."],
-          ["Cancel free until purchase", "After a runner buys your items, you pay for them even if you cancel."],
+          ["Pay only what it costs", "Posting holds your card. You're charged the receipt total plus fees once it's bought. Cancel free until then."],
           ["Show up for handoff", "Give your runner your 4-digit code. Repeat no-shows are banned."],
           ["No restricted items", "No alcohol, tobacco, vapes, prescription drugs or anything age-restricted."],
-          ["Be kind", "Requesters and runners rate each other after every order."],
         ].map(([t, d]) => (
           <div key={t} className="p-4">
             <p className="font-bold">{t}</p>

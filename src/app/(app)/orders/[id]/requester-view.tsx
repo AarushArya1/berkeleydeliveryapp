@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { CheckCircle2, CircleSlash, Hourglass, PackageCheck, ShieldAlert, Sparkles } from "lucide-react";
 import { cancelRequest, confirmReceived, openDispute } from "@/app/actions";
+import { NotifyPrompt } from "@/components/notify-prompt";
 import { PriceBreakdown, StatusPill } from "@/components/order-bits";
 import { RateForm, StarsShown } from "@/components/stars";
 import { Timeline } from "@/components/timeline";
 import { ClockTime, TimeLeft } from "@/components/time-left";
-import { Button, Card, Chip, ErrorText, Notice, Placeholder, Textarea } from "@/components/ui";
+import { Button, Card, Chip, ErrorText, Placeholder, Textarea } from "@/components/ui";
 import { firstName, money } from "@/lib/format";
 import type { DartRequest, Dispute } from "@/lib/types";
 import { BackLink, ConfirmButton, ItemsCard, OrderHeader, PersonRow, PhotoCard, useAction } from "./bits";
@@ -37,17 +38,11 @@ export function RequesterView(p: Props) {
   return (
     <div className="space-y-4 px-4 pb-8 pt-4">
       <div className="flex items-center justify-between">
-        <BackLink href="/wishlist" label="Wishlist" />
+        <BackLink href="/wishlist" label="Shopping list" />
         <StatusPill status={req.status} as="requester" />
       </div>
 
-      {p.posted && req.status === "open" ? (
-        <Notice tone="lime" className="animate-rise">
-          <span className="flex items-center gap-2 font-semibold">
-            <Sparkles className="size-4" /> Posted! We&apos;ll text you the moment a runner claims it.
-          </span>
-        </Notice>
-      ) : null}
+      {["open", "claimed"].includes(req.status) ? <NotifyPrompt posted={p.posted && req.status === "open"} /> : null}
 
       <OrderHeader req={req} />
       {req.status !== "cancelled" && req.status !== "expired" ? (
